@@ -12,6 +12,7 @@ dependencies = [
 	"flax>=0.12.0",
 ]
 keywords = [
+	"benchmark",
 	"bbob",
 	"black-box optimization",
 	"quality-diversity",

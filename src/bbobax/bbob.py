@@ -156,7 +156,7 @@ class BBOB:
         fn_noise = self.noise_model.apply(key, fn_val, params.noise_params)
 
         # Add boundary handling penalty and optimal function value
-        final_fitness = -(fn_noise + fn_pen + params.f_opt)
+        final_fitness = fn_noise + fn_pen + params.f_opt
 
         task_eval = BBOBEval(fitness=final_fitness)
         return state.replace(counter=state.counter + 1), task_eval
