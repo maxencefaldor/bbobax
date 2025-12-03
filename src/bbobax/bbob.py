@@ -158,8 +158,8 @@ class BBOB:
         # Add boundary handling penalty and optimal function value
         final_fitness = fn_noise + fn_pen + params.f_opt
 
-        task_eval = BBOBEval(fitness=final_fitness)
-        return state.replace(counter=state.counter + 1), task_eval
+        bbob_eval = BBOBEval(fitness=final_fitness)
+        return state.replace(counter=state.counter + 1), bbob_eval
 
     def sample_x(self, key: jax.Array) -> jax.Array:
         """Sample a random solution.
@@ -301,8 +301,8 @@ class QDBBOB(BBOB):
             params.descriptor_id, self.descriptor_fns, x, state, params
         )
 
-        task_eval = QDBBOBEval(fitness=bbob_eval.fitness, descriptor=descriptor)
-        return state, task_eval
+        bbob_eval = QDBBOBEval(fitness=bbob_eval.fitness, descriptor=descriptor)
+        return state, bbob_eval
 
     def gaussian_random_projection(self, key: jax.Array, num_dims: int) -> jax.Array:
         """Generate a random Gaussian projection matrix.

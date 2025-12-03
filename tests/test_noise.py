@@ -67,23 +67,19 @@ def test_noise_model_apply(noise_type):
         assert jnp.allclose(noisy_val, fn_val)
     else:
         # For other noise types, value should generally change
-        # (unless noise parameters sampled are extremely small, which is unlikely with default ranges)
+        # (unless noise parameters sampled are extremely small,
+        # which is unlikely with default ranges)
         assert not jnp.allclose(noisy_val, fn_val)
 
 
 def test_noise_stabilization():
     """Test noise stabilization."""
-    model = NoiseModel(use_stabilization=True)
-
-    # Create a very small function value that should trigger stabilization logic
-    fn_val = jnp.array([1e-9])
-    fn_noise = jnp.array([2e-9])  # Dummy noisy value
-
     # Directly test the stabilize function if accessible or check behavior through apply
     # Since stabilize is not exposed in public API of NoiseModel but used in apply
     # We rely on apply.
 
-    # However, it's hard to control the random noise inside apply to ensure specific condition.
+    # However, it's hard to control the random noise inside apply to ensure
+    # specific condition.
     # We can check import stabilize from noise module if we want unit test
     from bbobax.noise import stabilize
 
