@@ -42,6 +42,7 @@ notebooks = [
 	"ipykernel",
 	"ipywidgets",
 	"evosax",
+	"scikit-learn",
 	"mediapy",
 ]
 
@@ -82,3 +83,4 @@ check_untyped_defs = "True"
 warn_return_any = "True"
 show_error_codes = "True"
 warn_unused_ignores = "True"
+exclude = ["docs/", "site/", "notebooks/", "tests/"]

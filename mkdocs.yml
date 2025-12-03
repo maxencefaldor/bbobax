@@ -1,0 +1,73 @@
+site_name: BBOBax
+site_description: Accelerated Black-Box Optimization Benchmark in JAX
+site_author: Maxence Faldor
+site_url: https://maxencefaldor.github.io/bbobax/
+repo_url: https://github.com/maxencefaldor/bbobax
+repo_name: maxencefaldor/bbobax
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - scheme: default
+      primary: teal
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+  - mkdocs-jupyter:
+      include_source: true
+
+nav:
+  - Home: index.md
+  - Tutorials:
+      - Getting Started: notebooks/00_getting_started.ipynb
+      - BBOB Basics: notebooks/01_bbob.ipynb
+      - Black-Box Optimization: notebooks/02_bbo.ipynb
+      - Meta-BBO: notebooks/03_meta_bbo.ipynb
+      - Quality-Diversity: notebooks/04_qd.ipynb
+  - API Reference:
+      - BBOB: reference/bbob.md
+      - QD-BBOB: reference/qdbbob.md
+      - Fitness Functions: reference/fitness_fns.md
+      - Descriptor Functions: reference/descriptor_fns.md
+      - Noise Models: reference/noise.md
+      - Types: reference/types.md
+  - License: license.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: ["."]
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+
