@@ -2,6 +2,8 @@
 
 **BBOBax: Accelerated Black-Box Optimization Benchmark in JAX.**
 
+A reimplementation of [COCO](https://numbbo.github.io/coco/testsuites) test suite.
+
 ## Installation
 
 We recommend using [uv](https://github.com/astral-sh/uv) for installation:
