@@ -1,12 +1,12 @@
 """Black-box Optimization Benchmarking in JAX."""
 
-from .descriptors import get_random_projection_descriptor
-from .functions import bbob_fns
-from .noise import NoiseModel, NoiseParams
-from .task import (
+from .bbob import (
     BBOB,
     QDBBOB,
 )
+from .descriptor_fns import get_random_projection_descriptor
+from .fitness_fns import bbob_fns
+from .noise import NoiseModel, NoiseParams
 from .types import (
     BBOBEval,
     BBOBParams,
