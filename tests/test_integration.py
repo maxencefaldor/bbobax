@@ -47,7 +47,8 @@ def test_bbob_optimization_loop():
         # Note: state update in batch is tricky because we get N new states.
         # BBOB state only contains counters and rotation matrices (constant).
         # The counter increment is the only change.
-        # In a real setting, we might just take one state or not update state in vmap if read-only.
+        # In a real setting, we might just take one state or not update state in vmap
+        # if read-only.
         # Here we just take the first state from the batch for next iteration,
         # accepting that counters might diverge if we were tracking exact evals.
         new_states, results = batch_evaluate_vmapped(keys, xs, state, params)

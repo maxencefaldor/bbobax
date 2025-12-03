@@ -1,3 +1,5 @@
+"""Tests for BBOBax fitness functions."""
+
 import jax
 import jax.numpy as jnp
 import pytest
@@ -25,8 +27,10 @@ def test_lambda_alpha():
     assert jnp.allclose(res, jnp.diag(jnp.diag(res)))
 
     # Test masking (elements beyond num_dims should be alpha^0.5 = 3.162...)
-    # Wait, the implementation sets exp to 0.5 * mask, so masked elements get exp=0 -> 1.0?
-    # Let's check the code: exp = ... * mask. If mask is False (0), exp is 0. alpha^0 = 1.
+    # Wait, the implementation sets exp to 0.5 * mask, so masked elements
+    # get exp=0 -> 1.0?
+    # Let's check the code: exp = ... * mask. If mask is False (0), exp is 0.
+    # alpha^0 = 1.
     # The code says: exp = (jnp.where(...) * mask).
     # So for masked dimensions, exp should be 0, so value should be 1.
 
@@ -55,7 +59,8 @@ def test_transform_asy():
     # Check positive values are transformed
     assert not jnp.allclose(res, x)
 
-    # Negative values should be identity (or handle gracefully depending on implementation)
+    # Negative values should be identity (or handle gracefully depending on
+    # implementation)
     # The implementation uses jnp.where(x > 0, ..., x), so negative should be identity
     x_neg = jnp.array([-1.0, -2.0])
     res_neg = transform_asy(x_neg, beta, num_dims)
@@ -93,10 +98,12 @@ def test_fitness_fn_shapes_and_optimum(fn_name, mock_state, mock_params):
     assert val.shape == ()
     assert pen.shape == ()
 
-    # At optimum, value should be close to 0 (for most functions defined as f(x) = ... with min at 0)
-    # Note: Some functions might have offsets or complex optima, but with x_opt=0 and standard setup
-    # they are designed to be minimized at x_opt with value 0.
-    # Some functions like linear_slope might be different, but generally BBOB fns are 0 at optimum.
+    # At optimum, value should be close to 0
+    # (for most functions defined as f(x) = ... with min at 0)
+    # Note: Some functions might have offsets or complex optima, but with x_opt=0
+    # and standard setup they are designed to be minimized at x_opt with value 0.
+    # Some functions like linear_slope might be different, but generally BBOB fns
+    # are 0 at optimum.
     # We allow small tolerance.
     if fn_name not in [
         "linear_slope",
