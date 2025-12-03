@@ -1,10 +1,8 @@
 # BBOBax
 
 <div align="center">
-  <a href="https://pypi.python.org/pypi/cax"><img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/cax.svg?style=flat"></img></a>
-  <a href="https://pypi.python.org/pypi/cax"><img alt="PyPI - Version" src="https://img.shields.io/pypi/v/cax.svg?style=flat"></img></a>
-  <a href="https://arxiv.org/abs/2410.02651"><img alt="Paper" src="http://img.shields.io/badge/paper-arxiv.2410.02651-B31B1B.svg"></img></a>
-  <a href="https://x.com/maxencefaldor/status/1842211478796918945"><img alt="X URL" src="https://img.shields.io/twitter/url?url=https%3A%2F%2Fx.com%2Fmaxencefaldor%2Fstatus%2F1842211478796918945"></img></a>
+  <a href="https://pypi.python.org/pypi/bbobax"><img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/bbobax.svg?style=flat"></img></a>
+  <a href="https://pypi.python.org/pypi/bbobax"><img alt="PyPI - Version" src="https://img.shields.io/pypi/v/bbobax.svg?style=flat"></img></a>
   <a href="https://github.com/google/jax"><img alt="JAX" src="https://img.shields.io/badge/JAX-Accelerated-9cf"></img></a>
 </div>
 
