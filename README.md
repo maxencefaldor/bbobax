@@ -1,12 +1,12 @@
 # BBOBax
 
 <div align="center">
+  <p>Accelerated Black-Box Optimization Benchmark in JAX.</p>
   <a href="https://pypi.python.org/pypi/bbobax"><img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/bbobax.svg?style=flat"></img></a>
   <a href="https://pypi.python.org/pypi/bbobax"><img alt="PyPI - Version" src="https://img.shields.io/pypi/v/bbobax.svg?style=flat"></img></a>
   <a href="https://github.com/google/jax"><img alt="JAX" src="https://img.shields.io/badge/JAX-Accelerated-9cf"></img></a>
 </div>
-
-**BBOBax: Accelerated Black-Box Optimization Benchmark in JAX.**
+</br>
 
 A high-performance reimplementation of the [COCO](https://numbbo.github.io/coco/testsuites) (COmparing Continuous Optimizers) test suite in JAX. BBOBax allows for massive parallelization of function evaluations on hardware accelerators (GPUs/TPUs), enabling efficient benchmarking of black-box optimization algorithms.
 
