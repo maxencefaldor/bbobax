@@ -37,10 +37,10 @@ docs = [
 	"mkdocstrings[python]",
 	"mkdocs-jupyter",
 ]
-examples = [
-	"evosax",
+notebooks = [
 	"ipykernel",
 	"ipywidgets",
+	"evosax",
 	"mediapy",
 ]
 

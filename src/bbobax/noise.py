@@ -19,7 +19,7 @@ class NoiseParams:
 
 
 class NoiseModel:
-    """Blackbox Optimization Benchmarking Noise Models class."""
+    """Black-box Optimization Benchmarking Noise Models class."""
 
     def __init__(
         self,

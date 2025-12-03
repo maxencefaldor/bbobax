@@ -215,7 +215,7 @@ class BBOB:
 
 
 class QDBBOB(BBOB):
-    """Quality-Diversity Blackbox Optimization Benchmarking Task class."""
+    """Quality-Diversity Black-box Optimization Benchmarking Task class."""
 
     def __init__(
         self,
