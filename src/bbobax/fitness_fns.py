@@ -212,7 +212,7 @@ def rosenbrock_rotated(x: jax.Array, state: BBOBState, params: BBOBParams) -> ja
     z = (
         jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0)
         * jnp.matmul(state.r, x - params.x_opt)
-        + 0.5
+        + 1.0
     )  # TODO: check if correct
     z_i = z[:-1]
     z_ip1 = jnp.roll(z, -1)[:-1]
@@ -368,7 +368,7 @@ def schaffers_f7(x: jax.Array, state: BBOBState, params: BBOBParams) -> jax.Arra
 
 
 def schaffers_f7_ill_conditioned(
-x: jax.Array, state: BBOBState, params: BBOBParams
+    x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> jax.Array:
     """Schaffers F7 Function, ill-conditioned (Hansen et al., 2010, p. 90)."""
     max_num_dims = x.shape[0]
@@ -400,7 +400,7 @@ def griewank_rosenbrock(
     z = (
         jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0)
         * jnp.matmul(state.r, x - params.x_opt)
-        + 0.5
+        + 1.0
     )  # TODO: check if correct
     # z = jnp.maximum(1.0, jnp.sqrt(num_dims) / 8.0) * jnp.matmul(r, x - x_opt) + 1.0
     z_i = z[:-1]

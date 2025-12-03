@@ -5,7 +5,7 @@ from collections.abc import Callable
 import jax
 import jax.numpy as jnp
 
-from .functions import bbob_fns
+from .fitness_fns import bbob_fns
 from .noise import NoiseModel
 from .types import BBOBEval, BBOBParams, BBOBState, QDBBOBEval, QDBBOBParams
 
@@ -56,7 +56,7 @@ class BBOB:
         # Noise
         if noise_config is None:
             noise_config = {
-                "noise_models": [
+                "noise_model_names": [
                     "noiseless",
                     "gaussian",
                     "uniform",
@@ -146,7 +146,7 @@ class BBOB:
         # Using switch to select the correct fitness function based on fn_id
         fn_val, fn_pen = jax.lax.switch(
             params.fn_id,
-            self._vmapped_fitness_fns,
+            self.fitness_fns,
             x,
             state,
             params,
@@ -298,7 +298,7 @@ class QDBBOB(BBOB):
         state, bbob_eval = super().evaluate(key, x, state, params)
 
         descriptor = jax.lax.switch(
-            params.descriptor_id, self._vmapped_descriptor_fns, x, state, params
+            params.descriptor_id, self.descriptor_fns, x, state, params
         )
 
         task_eval = QDBBOBEval(fitness=bbob_eval.fitness, descriptor=descriptor)
