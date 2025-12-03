@@ -2,14 +2,19 @@ name: docs
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +27,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.13'
 
       - name: Install dependencies
         run: |
@@ -37,8 +42,21 @@ jobs:
           # Copy notebooks to docs directory
           cp -r notebooks docs/
 
-      - name: Deploy docs
+      - name: Build docs
         run: |
           source .venv/bin/activate
-          mkdocs gh-deploy --force
+          mkdocs build --clean
 
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
