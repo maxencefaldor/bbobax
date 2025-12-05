@@ -8,7 +8,7 @@
 </div>
 </br>
 
-A high-performance reimplementation of the [COCO](https://numbbo.github.io/coco/testsuites) (COmparing Continuous Optimizers) test suite in JAX. BBOBax allows for massive parallelization of function evaluations on hardware accelerators (GPUs/TPUs), enabling efficient benchmarking of black-box optimization algorithms.
+A high-performance reimplementation of the [COCO](https://coco-platform.org/) (COmparing Continuous Optimizers) test suite in JAX. BBOBax allows for massive parallelization of function evaluations on hardware accelerators (GPUs/TPUs), enabling efficient benchmarking of black-box optimization algorithms.
 
 ## Features
 
