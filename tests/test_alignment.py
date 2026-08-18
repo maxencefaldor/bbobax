@@ -28,8 +28,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from _official import bbobbenchmarks as bb
 
+from _official import bbobbenchmarks as bb
 from bbobax.fitness_fns import bbob_fns
 from bbobax.types import BBOBParams, BBOBState
 
@@ -235,10 +235,12 @@ def _test_points(rng, D, x_opt):
 @pytest.mark.parametrize(
     "fid",
     sorted(_INSTANCE_MAPPINGS),
-    ids=[f"f{fid:02d}-{_INSTANCE_MAPPINGS[fid][0]}" for fid in sorted(_INSTANCE_MAPPINGS)],
+    ids=[
+        f"f{fid:02d}-{_INSTANCE_MAPPINGS[fid][0]}" for fid in sorted(_INSTANCE_MAPPINGS)
+    ],
 )
 def test_alignment_with_official(fid, num_dims, instance):
-    """bbobax == official 2009 implementation on an injected instance."""
+    """Bbobax == official 2009 implementation on an injected instance."""
     D = num_dims
     name, mapper = _INSTANCE_MAPPINGS[fid]
     off = getattr(bb, f"F{fid}")(instance)
@@ -276,8 +278,18 @@ def test_alignment_with_official(fid, num_dims, instance):
 # ---------------------------------------------------------------------------
 
 _GALLAGHER = {
-    "gallagher_101_me": {"num_optima": 101, "first_alpha": 1000.0, "y_range": 5.0, "fold": 21},
-    "gallagher_21_hi": {"num_optima": 21, "first_alpha": 1000.0**2, "y_range": 4.9, "fold": 22},
+    "gallagher_101_me": {
+        "num_optima": 101,
+        "first_alpha": 1000.0,
+        "y_range": 5.0,
+        "fold": 21,
+    },
+    "gallagher_21_hi": {
+        "num_optima": 21,
+        "first_alpha": 1000.0**2,
+        "y_range": 4.9,
+        "fold": 22,
+    },
 }
 
 
@@ -331,7 +343,7 @@ def _gallagher_layout(name, D, instance_key, x_opt):
 
 
 def _monotone_tf_osc(f):
-    """The official scalar oscillation transform (monotoneTFosc), numpy."""
+    """Return the official scalar oscillation transform (monotoneTFosc), in numpy."""
     if f > 0.0:
         g = np.log(f) / 0.1
         return np.exp(g + 0.49 * (np.sin(g) + np.sin(0.79 * g))) ** 0.1
@@ -355,7 +367,7 @@ def _gallagher_reference(x, R, w, diags, y, D):
 @pytest.mark.parametrize("num_dims", [5, 8])
 @pytest.mark.parametrize("name", sorted(_GALLAGHER))
 def test_gallagher_matches_paper_formula(name, num_dims):
-    """bbobax Gallagher value == numpy paper formula on bbobax's own layout."""
+    """Bbobax Gallagher value == numpy paper formula on bbobax's own layout."""
     D = num_dims
     rng = np.random.default_rng(2100 + D)
     R = np.asarray(bb.compute_rotation(70 + D, D))  # any orthogonal matrix
@@ -412,7 +424,9 @@ def test_gallagher_101_and_21_differ():
     R = np.asarray(bb.compute_rotation(90 + D, D))
     x_opt = rng.uniform(-3.9, 3.9, size=D)
     X = jnp.asarray(rng.uniform(-5.0, 5.0, size=(20, D)))
-    params, state = _make_params_state(D, x_opt, 0.0, R, np.eye(D), key=jax.random.key(3))
+    params, state = _make_params_state(
+        D, x_opt, 0.0, R, np.eye(D), key=jax.random.key(3)
+    )
 
     v21, p21 = jax.vmap(bbob_fns["gallagher_101_me"], in_axes=(0, None, None))(
         X, state, params

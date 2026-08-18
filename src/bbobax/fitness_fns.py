@@ -20,10 +20,12 @@ Two conventions to know:
 import jax
 import jax.numpy as jnp
 
-from .types import BBOBParams, BBOBState
+from .types import BBOBParams, BBOBState, IntScalar
 
 
-def _lambda_alpha_vector(alpha: float, max_num_dims: int, num_dims: int) -> jax.Array:
+def _lambda_alpha_vector(
+    alpha: float, max_num_dims: int, num_dims: IntScalar
+) -> jax.Array:
     """Masked lambda alpha vector."""
     mask = jnp.arange(max_num_dims) < num_dims
 
@@ -34,7 +36,7 @@ def _lambda_alpha_vector(alpha: float, max_num_dims: int, num_dims: int) -> jax.
     return jnp.power(alpha, exp)
 
 
-def lambda_alpha(alpha: float, max_num_dims: int, num_dims: int) -> jax.Array:
+def lambda_alpha(alpha: float, max_num_dims: int, num_dims: IntScalar) -> jax.Array:
     """Masked lambda alpha matrix."""
     return jnp.diag(_lambda_alpha_vector(alpha, max_num_dims, num_dims))
 
@@ -54,7 +56,7 @@ def transform_osz(element: jax.Array) -> jax.Array:
     )
 
 
-def transform_asy(x: jax.Array, beta: float, num_dims: int) -> jax.Array:
+def transform_asy(x: jax.Array, beta: float, num_dims: IntScalar) -> jax.Array:
     """Asymmetry transformation function.
 
     The untaken branch is sanitized before ``sqrt``/``power`` so that
@@ -75,7 +77,7 @@ def transform_asy(x: jax.Array, beta: float, num_dims: int) -> jax.Array:
     return jnp.where(x > 0.0, jnp.power(safe_x, exp), x)
 
 
-def f_pen(x: jax.Array, num_dims: int) -> jax.Array:
+def f_pen(x: jax.Array, num_dims: IntScalar) -> jax.Array:
     """Boundary penalty."""
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < num_dims

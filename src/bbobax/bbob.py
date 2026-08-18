@@ -1,13 +1,20 @@
 """Black-box Optimization Benchmarking Task."""
 
-from collections.abc import Callable
-
 import jax
 import jax.numpy as jnp
 
 from .fitness_fns import X_OPT_CONVENTIONS, bbob_fns
 from .noise import NoiseModel
-from .types import BBOBEval, BBOBParams, BBOBState, QDBBOBEval, QDBBOBParams
+from .types import (
+    BBOBEval,
+    BBOBParams,
+    BBOBState,
+    DescriptorFn,
+    FitnessFn,
+    IntScalar,
+    QDBBOBEval,
+    QDBBOBParams,
+)
 
 
 class BBOB:
@@ -15,8 +22,7 @@ class BBOB:
 
     def __init__(
         self,
-        fitness_fns: list[Callable[[jax.Array, BBOBState, BBOBParams], jax.Array]]
-        | dict[str, Callable[[jax.Array, BBOBState, BBOBParams], jax.Array]],
+        fitness_fns: list[FitnessFn] | dict[str, FitnessFn],
         min_num_dims: int = 2,
         max_num_dims: int = 10,
         x_range: tuple[float, float] = (-5.0, 5.0),
@@ -201,7 +207,7 @@ class BBOB:
         )
 
     def generate_random_rotation(
-        self, key: jax.Array, max_dims: int, num_dims: int
+        self, key: jax.Array, max_dims: int, num_dims: IntScalar
     ) -> jax.Array:
         """Generate a random (n, n) rotation matrix uniformly sampled from SO(n)."""
         # Generate fixed-size random normal matrix but mask based on num_dims
@@ -242,10 +248,8 @@ class QDBBOB(BBOB):
 
     def __init__(
         self,
-        descriptor_fns: list[Callable[[jax.Array, BBOBState, QDBBOBParams], jax.Array]]
-        | dict[str, Callable[[jax.Array, BBOBState, QDBBOBParams], jax.Array]],
-        fitness_fns: list[Callable[[jax.Array, BBOBState, BBOBParams], jax.Array]]
-        | dict[str, Callable[[jax.Array, BBOBState, BBOBParams], jax.Array]],
+        descriptor_fns: list[DescriptorFn] | dict[str, DescriptorFn],
+        fitness_fns: list[FitnessFn] | dict[str, FitnessFn],
         descriptor_size: int = 2,
         **kwargs,
     ):
@@ -322,7 +326,9 @@ class QDBBOB(BBOB):
         bbob_eval = QDBBOBEval(fitness=bbob_eval.fitness, descriptor=descriptor)
         return state, bbob_eval
 
-    def gaussian_random_projection(self, key: jax.Array, num_dims: int) -> jax.Array:
+    def gaussian_random_projection(
+        self, key: jax.Array, num_dims: IntScalar
+    ) -> jax.Array:
         """Generate a random Gaussian projection matrix.
 
         Args:
