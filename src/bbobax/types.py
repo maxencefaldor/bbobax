@@ -1,6 +1,7 @@
 """Black-box Optimization Benchmarking Types."""
 
 from collections.abc import Callable
+from typing import TypeAlias
 
 import jax
 from flax.struct import dataclass
@@ -9,16 +10,16 @@ from .noise import NoiseParams
 
 # Scalars that are Python values when built by hand and traced arrays when they
 # come out of `sample`; both are valid everywhere these appear.
-type IntScalar = int | jax.Array
-type FloatScalar = float | jax.Array
+IntScalar: TypeAlias = int | jax.Array
+FloatScalar: TypeAlias = float | jax.Array
 
 # A fitness function returns (value, boundary penalty); ``BBOB.evaluate`` adds
 # f_opt and applies noise to the value alone. A descriptor function returns the
 # descriptor vector.
-type FitnessFn = Callable[
+FitnessFn: TypeAlias = Callable[
     [jax.Array, "BBOBState", "BBOBParams"], tuple[jax.Array, jax.Array]
 ]
-type DescriptorFn = Callable[[jax.Array, "BBOBState", "QDBBOBParams"], jax.Array]
+DescriptorFn: TypeAlias = Callable[[jax.Array, "BBOBState", "QDBBOBParams"], jax.Array]
 
 
 @dataclass

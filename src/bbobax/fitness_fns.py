@@ -17,11 +17,13 @@ Two conventions to know:
   is added by ``BBOB.evaluate``, and noise applies to the value only.
 """
 
+from collections.abc import Callable
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .types import BBOBParams, BBOBState, IntScalar
+from .types import BBOBParams, BBOBState, FitnessFn, IntScalar
 
 
 def _lambda_alpha_vector(
@@ -787,7 +789,7 @@ def _x_opt_lunacek(x_opt: jax.Array) -> jax.Array:
 # ``BBOB.sample`` so that ``params.x_opt`` is always the function's true argmin
 # -- the invariant COCO keeps by storing the post-convention optimum. Functions
 # absent from this mapping use the draw unchanged.
-X_OPT_CONVENTIONS = {
+X_OPT_CONVENTIONS: dict[str, Callable[[jax.Array], jax.Array]] = {
     "bueche_rastrigin": _x_opt_bueche_rastrigin,
     "linear_slope": _x_opt_linear_slope,
     "rosenbrock": _x_opt_rosenbrock,
@@ -797,7 +799,7 @@ X_OPT_CONVENTIONS = {
 }
 
 
-bbob_fns = {
+bbob_fns: dict[str, FitnessFn] = {
     # Part 1: Separable functions
     "sphere": sphere,
     "ellipsoidal": ellipsoidal,
