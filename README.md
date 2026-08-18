@@ -19,6 +19,41 @@ A high-performance reimplementation of the [COCO](https://coco-platform.org/) (C
 *   **Quality-Diversity (QD)**: Support for Quality-Diversity benchmarks with customizable descriptor functions.
 *   **Flexible API**: Easy integration with existing JAX-based evolutionary computation libraries (e.g., EvoJAX, evosax).
 
+## Fidelity to official BBOB
+
+Every function and noise model is verified **numerically** against the official
+2009 BBOB implementation (`bbobbenchmarks.py`, vendored as test ground truth):
+identical instances are injected and outputs must agree to ≤1e-9 relative in
+float64 — the suite in `tests/test_alignment.py` re-proves this on every run.
+Where the paper (Hansen, Finck, Ros & Auger, INRIA RR-6829/RR-6869) and the
+official code disagree, the code wins, with a comment at the site.
+
+Guarantees you can rely on:
+
+*   `params.x_opt` is always the function's **true argmin** — the per-function
+    x_opt conventions of the official suite (sign vectors, scalings,
+    sign-forcing) are applied at sampling time, exactly as COCO stores the
+    post-convention optimum. `f(params.x_opt) = f_opt` for all 24 functions.
+*   Noise applies to the raw function value only; the boundary penalty and
+    `f_opt` are added outside it, as the paper prescribes.
+*   The default `BBOB()` is the plain **noiseless** suite with rotations on —
+    exactly COCO's noiseless BBOB. Noise is opt-in via `noise_config`.
+
+Deliberate, documented deviations from COCO (design choices, not accidents):
+
+*   **Instance distribution**: x_opt is drawn continuously in `x_opt_range`
+    (COCO uses a 0.0008 grid) and `f_opt` defaults to 0 (COCO draws a 2-decimal
+    Cauchy clipped to ±1000); there is no seed table, so official numbered
+    instances are not reproducible — instances are sampled, not enumerated.
+*   **f9/f19**: the optimum is placeable via `x_opt` (official derives it from
+    the rotation, always near the origin). Every bbobax instance is an exact
+    translation of an official landscape — a strict superset of the official
+    family, verified bit-for-bit at the derived point.
+*   **Rotations** are Haar on SO(n) (COCO: O(n)); orientation is the only
+    difference, and no benchmark property distinguishes the cosets.
+*   The **`additive`** noise model is a bbobax extension with no COCO
+    counterpart.
+
 ## Installation
 
 We recommend using [uv](https://github.com/astral-sh/uv) for a fast and reliable installation, but standard `pip` is also supported.
@@ -90,7 +125,7 @@ import jax
 from bbobax import QDBBOB, bbob_fns, get_random_projection_descriptor
 
 # Define descriptor functions (e.g., random projection)
-descriptor_fns = [get_random_projection_descriptor]
+descriptor_fns = [get_random_projection_descriptor()]
 
 # Initialize QD-BBOB task
 qd_bbob = QDBBOB(

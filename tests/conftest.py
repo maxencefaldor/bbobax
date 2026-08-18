@@ -6,6 +6,26 @@ import pytest
 
 from bbobax.types import BBOBParams, BBOBState, NoiseParams, QDBBOBParams
 
+# The whole suite runs in float64: the alignment tests (tests/test_alignment.py)
+# compare against the official 2009 implementation at 1e-9 relative error, and
+# the optimum tests assert f(x_opt) == 0 to 1e-9 -- neither is meaningful in
+# float32. conftest is imported before any test module, so this applies
+# everywhere.
+jax.config.update("jax_enable_x64", True)
+
+
+def zero_noise_params() -> NoiseParams:
+    """All-zero noise parameters (noise_id 0 selects the first model)."""
+    return NoiseParams(
+        noise_id=jnp.array(0),
+        gaussian_beta=jnp.array(0.0),
+        uniform_alpha=jnp.array(0.0),
+        uniform_beta=jnp.array(0.0),
+        cauchy_alpha=jnp.array(0.0),
+        cauchy_p=jnp.array(0.0),
+        additive_std=jnp.array(0.0),
+    )
+
 
 @pytest.fixture
 def mock_state():
@@ -30,17 +50,9 @@ def mock_params():
             fn_id=jnp.array(0),
             num_dims=jnp.array(num_dims),
             x_opt=jnp.zeros(max_num_dims),
-            key=jax.random.key(0),
             f_opt=jnp.array(0.0),
-            noise_params=NoiseParams(
-                noise_id=jnp.array(0),
-                gaussian_beta=jnp.array(0.0),
-                uniform_alpha=jnp.array(0.0),
-                uniform_beta=jnp.array(0.0),
-                cauchy_alpha=jnp.array(0.0),
-                cauchy_p=jnp.array(0.0),
-                additive_std=jnp.array(0.0),
-            ),
+            key=jax.random.key(0),
+            noise_params=zero_noise_params(),
         )
 
     return _get_mock_params
@@ -61,17 +73,9 @@ def mock_qdbbob_params():
             fn_id=jnp.array(0),
             num_dims=jnp.array(num_dims),
             x_opt=jnp.zeros(max_num_dims),
-            key=jax.random.key(0),
             f_opt=jnp.array(0.0),
-            noise_params=NoiseParams(
-                noise_id=jnp.array(0),
-                gaussian_beta=jnp.array(0.0),
-                uniform_alpha=jnp.array(0.0),
-                uniform_beta=jnp.array(0.0),
-                cauchy_alpha=jnp.array(0.0),
-                cauchy_p=jnp.array(0.0),
-                additive_std=jnp.array(0.0),
-            ),
+            key=jax.random.key(0),
+            noise_params=zero_noise_params(),
             descriptor_params=descriptor_params,
             descriptor_id=jnp.array(0),
         )

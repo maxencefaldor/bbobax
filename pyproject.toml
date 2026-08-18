@@ -57,6 +57,9 @@ build-backend = "hatchling.build"
 [tool.ruff]
 src = ["src", "tests"]
 target-version = "py313"
+# Vendored official BBOB implementation (test ground truth): never lint or
+# reformat it. Top-level exclude covers both `ruff check` and `ruff format`.
+extend-exclude = ["tests/_official/bbobbenchmarks.py"]
 
 [tool.ruff.lint]
 select = ["E", "D", "F", "I", "N", "SIM", "UP", "W"]
