@@ -8,12 +8,20 @@ from .noise import NoiseParams
 
 @dataclass
 class BBOBParams:
-    """BBOB task parameters."""
+    """BBOB task parameters.
+
+    ``x_opt`` is the function's true argmin: per-function conventions (sign
+    vectors, scalings, sign-forcing) are applied at sampling time, mirroring
+    how COCO stores the post-convention optimum. ``key`` is the instance's own
+    PRNG key, fixed at sampling, for instance structure beyond x_opt -- the
+    Gallagher functions draw their peak layouts from it.
+    """
 
     fn_id: jax.Array
     num_dims: jax.Array
     x_opt: jax.Array
     f_opt: jax.Array
+    key: jax.Array
     noise_params: NoiseParams
 
 

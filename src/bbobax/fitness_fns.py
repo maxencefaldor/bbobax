@@ -1,4 +1,21 @@
-"""Black-box Optimization Benchmarking Functions Definitions."""
+"""Black-box Optimization Benchmarking Functions Definitions.
+
+Every function is verified numerically against the official 2009 BBOB
+implementation (``bbobbenchmarks.py``) on identical instances in float64 -- see
+``tests/test_alignment.py``. Where the paper (Hansen, Finck, Ros, Auger,
+INRIA RR-6829) and the official code disagree, the code wins, with a comment at
+the site: the code is what every published BBOB result actually ran.
+
+Two conventions to know:
+
+- Functions receive fully prepared ``params``: ``params.x_opt`` is the true
+  argmin of every function. The per-function x_opt conventions of the official
+  suite (sign vectors, scalings, component sign-forcing) are applied at sampling
+  time via ``X_OPT_CONVENTIONS``, mirroring how COCO stores the post-convention
+  optimum. Hand-built params should apply the matching convention first.
+- Functions return ``(value, penalty)`` with the optimum at value 0; ``f_opt``
+  is added by ``BBOB.evaluate``, and noise applies to the value only.
+"""
 
 import jax
 import jax.numpy as jnp
@@ -38,18 +55,24 @@ def transform_osz(element: jax.Array) -> jax.Array:
 
 
 def transform_asy(x: jax.Array, beta: float, num_dims: int) -> jax.Array:
-    """Asymmetry transformation function."""
+    """Asymmetry transformation function.
+
+    The untaken branch is sanitized before ``sqrt``/``power`` so that
+    ``jax.grad`` through negative coordinates yields zeros instead of NaN
+    (the standard double-``where`` guard); values are unchanged.
+    """
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < num_dims
 
+    safe_x = jnp.where(x > 0.0, x, 0.0)
     exp = (
         1.0
         + beta
         * jnp.where(num_dims > 1, jnp.arange(max_num_dims) / (num_dims - 1), 1.0)
-        * jnp.sqrt(x)
+        * jnp.sqrt(safe_x)
         * mask
     )
-    return jnp.where(x > 0.0, jnp.power(x, exp), x)
+    return jnp.where(x > 0.0, jnp.power(safe_x, exp), x)
 
 
 def f_pen(x: jax.Array, num_dims: int) -> jax.Array:
@@ -120,8 +143,11 @@ def bueche_rastrigin(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    # TODO: in "Real-Parameter Black-Box Optimization Benchmarking 2009: Noiseless
-    # Functions Definitions", circular definition between z and s.
+    # The paper's "for i = 1, 3, 5, ..." is 1-based; the skewed coordinates are
+    # the 0-based EVEN ones. Both officials agree (transform_vars_brs.c:46 with a
+    # comment flagging exactly this trap; bbobbenchmarks applies it to x[::2]).
+    # The paper's seemingly circular z/s definition resolves cleanly: s_i > 0
+    # always, so conditioning on the post-osz sign (as the officials do) is exact.
     z = transform_osz(x - params.x_opt)
 
     exp = (
@@ -132,7 +158,7 @@ def bueche_rastrigin(
         )
         * mask
     )
-    cond = (z > 0.0) & (jnp.arange(max_num_dims) % 2 == 1)
+    cond = (z > 0.0) & (jnp.arange(max_num_dims) % 2 == 0)
     s = jnp.where(cond, jnp.power(10.0, exp + 1), jnp.power(10.0, exp))
 
     z = s * z
@@ -152,8 +178,9 @@ def linear_slope(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    # x_opt = 5.0 * (2 * jax.random.bernoulli(subkey, shape=(max_num_dims,)) - 1)
-    x_opt = jnp.where(params.x_opt > 0.0, 5.0, -5.0)
+    # params.x_opt is the true optimum: +-5 per coordinate, applied by the
+    # sampling convention (see X_OPT_CONVENTIONS).
+    x_opt = params.x_opt
 
     z = jnp.where(x * x_opt < 25.0, x, x_opt)
 
@@ -212,7 +239,10 @@ def step_ellipsoidal(
         )
         * mask
     )
-    out = jnp.sum(100.0 * jnp.power(10.0, exp) * jnp.square(z) * mask)
+    # No leading coefficient: the conditioning lives entirely in the exponent.
+    # (An earlier version carried an extra x100 here; paper 2.7, f_step_ellipsoid.c
+    # and bbobbenchmarks all agree there is none.)
+    out = jnp.sum(jnp.power(10.0, exp) * jnp.square(z) * mask)
     return 0.1 * jnp.maximum(jnp.abs(z_hat[0]) / 1e4, out), f_pen(x, params.num_dims)
 
 
@@ -223,8 +253,9 @@ def rosenbrock(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims - 1) < (params.num_dims - 1)
 
-    x_opt = params.x_opt * 3 / 4
-    z = jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0) * (x - x_opt) + 1.0
+    # params.x_opt is the true optimum, already scaled by 0.75 at sampling time
+    # (COCO stores the scaled vector too: f_rosenbrock.c:86).
+    z = jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0) * (x - params.x_opt) + 1.0
     z_i = z[:-1]
     z_ip1 = jnp.roll(z, -1)[:-1]
 
@@ -239,11 +270,17 @@ def rosenbrock_rotated(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims - 1) < (params.num_dims - 1)
 
+    # Official BBOB uses z = s*R*x + 1/2 with the optimum derived from R (norm
+    # ~ sqrt(D)/2, always near the origin). This parameterization is verified
+    # exactly equivalent: with x_opt = R^T (0.5/s) 1 it reproduces the official
+    # function bit-for-bit, and any other x_opt is a pure translation of an
+    # official landscape. Kept deliberately: the optimum is placeable, and
+    # params.x_opt is the argmin like everywhere else.
     z = (
         jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0)
         * (state.r @ (x - params.x_opt))
         + 1.0
-    )  # TODO: check if correct
+    )
     z_i = z[:-1]
     z_ip1 = jnp.roll(z, -1)[:-1]
 
@@ -441,12 +478,15 @@ def griewank_rosenbrock(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims - 1) < (params.num_dims - 1)
 
+    # Same deliberate parameterization as rosenbrock_rotated: official BBOB has
+    # z = s*R*x + 1/2 with an R-derived optimum; this form is verified exactly
+    # equivalent (x_opt = R^T (0.5/s) 1 reproduces it bit-for-bit) and makes
+    # params.x_opt the argmin.
     z = (
         jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0)
         * (state.r @ (x - params.x_opt))
         + 1.0
-    )  # TODO: check if correct
-    # z = jnp.maximum(1.0, jnp.sqrt(num_dims) / 8.0) * jnp.matmul(r, x - x_opt) + 1.0
+    )
     z_i = z[:-1]
     z_ip1 = jnp.roll(z, -1)[:-1]
 
@@ -462,10 +502,11 @@ def schwefel(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    # x_opt = 4.2096874633 * (2 * jax.random.bernoulli(subkey,
-    # shape=(max_num_dims,)) - 1) / 2
-    bernoulli = jnp.where(params.x_opt > 0.0, 1.0, -1.0)
-    x_opt = 4.2096874633 * bernoulli / 2.0
+    # params.x_opt is the true optimum: +-4.2096874633/2 per coordinate, applied
+    # by the sampling convention. (The C source carries ...4637 in one literal;
+    # the paper, bbobbenchmarks and C's own best_parameter all say ...4633.)
+    x_opt = params.x_opt
+    bernoulli = jnp.where(x_opt > 0.0, 1.0, -1.0)
 
     x_hat = 2.0 * bernoulli * x
     x_hat_i = x_hat
@@ -492,8 +533,11 @@ def gallagher_101_me(
     mask = jnp.arange(max_num_dims) < params.num_dims
 
     num_optima = 101
-    key = jax.random.key(0)
-    key = jax.random.fold_in(key, state.q[0, 0])
+    # The peak layout is instance data, drawn from the instance's own key.
+    # (An earlier version derived entropy from fold_in(key(0), q[0,0]); fold_in
+    # int-casts the float and |q00| <= 1 for any rotation, so every rotated
+    # instance shared one frozen layout.)
+    key = jax.random.fold_in(params.key, 21)
 
     w = jnp.where(
         jnp.arange(num_optima) == 0,
@@ -554,11 +598,12 @@ def gallagher_21_hi(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    x_opt = params.x_opt * 3.92 / 4.0
+    # params.x_opt is the true optimum, already scaled by 0.98 at sampling time.
+    x_opt = params.x_opt
 
     num_optima = 21
-    key = jax.random.key(0)
-    key = jax.random.fold_in(key, state.q[0, 0])
+    # See gallagher_101_me: the layout comes from the instance's own key.
+    key = jax.random.fold_in(params.key, 22)
 
     w = jnp.where(
         jnp.arange(num_optima) == 0,
@@ -616,14 +661,14 @@ def katsuura(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Katsuura Function (Hansen et al., 2010, p. 115)."""
-    # NOTE: Overflow in float32 because of the terms 2**31 and 2**32 but works with
-    # higher precision
-    # float64 with jax.config.update("jax_enable_x64", True)
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    # num_terms = 32 in Hansen et al., 2010, but set to 30 for numerical stability
-    num_terms = 30
+    # 32 terms, exactly as official. The powers are computed in floating point
+    # (2.0**j), so there is no integer overflow; in float32 the j > 24 terms are
+    # below mantissa resolution and contribute harmless near-zero noise, while in
+    # float64 all 32 terms are needed for exactness (J=30 costs ~1e-7 absolute).
+    num_terms = 32
 
     z = state.r @ (x - params.x_opt)
     z = _lambda_alpha_vector(100.0, max_num_dims, params.num_dims) * z
@@ -652,7 +697,9 @@ def lunacek(
     s = 1.0 - 1.0 / (2.0 * jnp.sqrt(params.num_dims + 20.0) - 8.2)
     mu_1 = -jnp.sqrt((mu_0**2 - d) / s)
 
-    x_opt = jnp.where(params.x_opt > 0.0, mu_0 / 2.0, -mu_0 / 2.0)
+    # params.x_opt is the true optimum: +-mu_0/2 per coordinate, applied by the
+    # sampling convention.
+    x_opt = params.x_opt
     x_hat = 2.0 * jnp.sign(x_opt) * x
 
     z = state.r @ (x_hat - mu_0)
@@ -665,6 +712,56 @@ def lunacek(
     return jnp.minimum(s_1, d * params.num_dims + s * s_2) + 10.0 * (
         params.num_dims - s_3
     ), 10.0**4 * f_pen(x, params.num_dims)
+
+
+def _x_opt_identity(x_opt: jax.Array) -> jax.Array:
+    return x_opt
+
+
+def _x_opt_bueche_rastrigin(x_opt: jax.Array) -> jax.Array:
+    # The officials force the skewed (0-based even) coordinates non-negative
+    # (f_bueche_rastrigin.c:81-84, "in the legacy code but _not_ in the function
+    # description"; bbobbenchmarks xopt[::2] = abs(...)). The paper omits it;
+    # the code defines the real instances, so the code wins.
+    is_even = jnp.arange(x_opt.shape[0]) % 2 == 0
+    return jnp.where(is_even, jnp.abs(x_opt), x_opt)
+
+
+def _x_opt_linear_slope(x_opt: jax.Array) -> jax.Array:
+    # The optimum sits on the +-5 corner selected by the sign of the draw.
+    return jnp.where(x_opt > 0.0, 5.0, -5.0)
+
+
+def _x_opt_rosenbrock(x_opt: jax.Array) -> jax.Array:
+    # Optimum in [-3, 3]^D (paper 2.8); COCO stores the scaled vector too.
+    return 0.75 * x_opt
+
+
+def _x_opt_schwefel(x_opt: jax.Array) -> jax.Array:
+    return jnp.where(x_opt > 0.0, 4.2096874633 / 2.0, -4.2096874633 / 2.0)
+
+
+def _x_opt_gallagher_21_hi(x_opt: jax.Array) -> jax.Array:
+    # y_1 in [-3.92, 3.92]^D (paper 5.22; bbobbenchmarks fac = 0.98).
+    return 0.98 * x_opt
+
+
+def _x_opt_lunacek(x_opt: jax.Array) -> jax.Array:
+    return jnp.where(x_opt > 0.0, 2.5 / 2.0, -2.5 / 2.0)
+
+
+# Per-function preparation of a raw uniform x_opt draw, applied by
+# ``BBOB.sample`` so that ``params.x_opt`` is always the function's true argmin
+# -- the invariant COCO keeps by storing the post-convention optimum. Functions
+# absent from this mapping use the draw unchanged.
+X_OPT_CONVENTIONS = {
+    "bueche_rastrigin": _x_opt_bueche_rastrigin,
+    "linear_slope": _x_opt_linear_slope,
+    "rosenbrock": _x_opt_rosenbrock,
+    "schwefel": _x_opt_schwefel,
+    "gallagher_21_hi": _x_opt_gallagher_21_hi,
+    "lunacek": _x_opt_lunacek,
+}
 
 
 bbob_fns = {

@@ -1,4 +1,19 @@
-"""Black-box Optimization Benchmarking Noise Models."""
+"""Black-box Optimization Benchmarking Noise Models.
+
+The three BBOB noise models (Gaussian, uniform, Cauchy) follow Hansen, Finck,
+Ros, Auger, "Real-Parameter Black-Box Optimization Benchmarking 2009: Noisy
+Functions Definitions" (INRIA RR-6869) and are verified against its formulas
+and the official ``bbobbenchmarks.py``. ``additive`` is a bbobax extension with
+no COCO counterpart. Noise applies to the raw function value only; the boundary
+penalty and f_opt are added outside it (``BBOB.evaluate``), as the paper
+prescribes.
+
+The paper defines two discrete severities per model (moderate/severe); bbobax
+samples the parameters continuously across that span. The uniform model's
+alpha is dimension-dependent in the paper (0.49 + 1/D at severe); bbobax
+samples the *multiplier* on (0.49 + 1/D), so the paper's severities are the
+endpoints at every dimension.
+"""
 
 import jax
 import jax.numpy as jnp
@@ -21,33 +36,46 @@ class NoiseParams:
 class NoiseModel:
     """Black-box Optimization Benchmarking Noise Models class."""
 
+    # Parameter ranges spanning the paper's moderate..severe severities.
+    # uniform_alpha is the multiplier on (0.49 + 1/D), so the paper's levels are
+    # the endpoints at every dimension.
+    DEFAULT_RANGES: dict[str, tuple[float, float]] = {
+        "gaussian_beta": (0.01, 1.0),
+        "uniform_alpha": (0.01, 1.0),
+        "uniform_beta": (0.01, 1.0),
+        "cauchy_alpha": (0.01, 1.0),
+        "cauchy_p": (0.05, 0.2),
+        "additive_std": (0.0, 0.1),
+    }
+
     def __init__(
         self,
-        noise_model_names: list[str] = [
+        noise_model_names: tuple[str, ...] = (
             "noiseless",
             "gaussian",
             "uniform",
             "cauchy",
             "additive",
-        ],
-        noise_ranges: dict[str, tuple[float, float]] = {
-            "gaussian_beta": None,
-            "uniform_alpha": None,
-            "uniform_beta": None,
-            "cauchy_alpha": None,
-            "cauchy_p": None,
-            "additive_std": None,
-        },
+        ),
+        noise_ranges: dict[str, tuple[float, float]] | None = None,
         use_stabilization: bool = False,
     ):
         """Initialize the noise model.
 
         Args:
-            noise_model_names: List of noise model names to use.
-            noise_ranges: Dictionary of noise parameter ranges.
+            noise_model_names: Names of the noise models to sample among.
+            noise_ranges: Overrides for parameter ranges, merged over
+                ``DEFAULT_RANGES``; a partial dictionary is fine.
             use_stabilization: Whether to use noise stabilization.
 
         """
+        unknown = set(noise_model_names) - set(all_noise_models)
+        if unknown:
+            raise ValueError(
+                f"unknown noise models {sorted(unknown)}; "
+                f"available: {sorted(all_noise_models)}"
+            )
+
         # Collect active noise models
         self.noise_ids, self.noise_models, counter = [], [], 0
         for noise_model_name, noise_model in all_noise_models.items():
@@ -57,33 +85,20 @@ class NoiseModel:
                 counter += 1
         self.noise_ids = jnp.array(self.noise_ids)
 
-        # Default ranges for noise model parameters between moderate and severe
-        self.noise_ranges = {
-            "gaussian_beta": noise_ranges["gaussian_beta"]
-            if noise_ranges["gaussian_beta"]
-            else (0.01, 1.0),
-            "uniform_alpha": noise_ranges["uniform_alpha"]
-            if noise_ranges["uniform_alpha"]
-            else (0.005, 0.5),
-            "uniform_beta": noise_ranges["uniform_beta"]
-            if noise_ranges["uniform_beta"]
-            else (0.01, 1.0),
-            "cauchy_alpha": noise_ranges["cauchy_alpha"]
-            if noise_ranges["cauchy_alpha"]
-            else (0.01, 1.0),
-            "cauchy_p": noise_ranges["cauchy_p"]
-            if noise_ranges["cauchy_p"]
-            else (0.05, 0.2),
-            "additive_std": noise_ranges["additive_std"]
-            if noise_ranges["additive_std"]
-            else (0.0, 0.1),
-        }
+        self.noise_ranges = {**self.DEFAULT_RANGES, **(noise_ranges or {})}
 
         # Use noise stabilization close to optimal value
         self.use_stabilization = use_stabilization
 
-    def sample(self, key: jax.Array) -> NoiseParams:
-        """Sample a noise model and its parameter settings."""
+    def sample(self, key: jax.Array, num_dims: jax.Array) -> NoiseParams:
+        """Sample a noise model and its parameter settings.
+
+        Args:
+            key: JAX random key.
+            num_dims: Dimensionality of the task instance -- the uniform
+                model's alpha is dimension-dependent (0.49 + 1/D).
+
+        """
         (
             key_id,
             key_gaussian,
@@ -96,18 +111,20 @@ class NoiseModel:
 
         noise_id = jax.random.choice(key_id, self.noise_ids)
 
-        # Sample uniformly between moderate and severe divided by 2
+        # Sampled continuously across the paper's moderate..severe span
         gaussian_beta = jax.random.uniform(
             key_gaussian,
             minval=self.noise_ranges["gaussian_beta"][0],
             maxval=self.noise_ranges["gaussian_beta"][1],
         )
 
+        # Paper: alpha = 0.01(0.49 + 1/D) moderate, (0.49 + 1/D) severe -- the
+        # sampled value is the multiplier, the 1/D term is applied here.
         uniform_alpha = jax.random.uniform(
             key_uniform_1,
             minval=self.noise_ranges["uniform_alpha"][0],
             maxval=self.noise_ranges["uniform_alpha"][1],
-        )
+        ) * (0.49 + 1.0 / num_dims)
         uniform_beta = jax.random.uniform(
             key_uniform_2,
             minval=self.noise_ranges["uniform_beta"][0],
@@ -196,8 +213,10 @@ def uniform_noise(
     f_1 = jnp.power(
         jax.random.uniform(key_1, shape=fn_val.shape), noise_params.uniform_beta
     )
+    # Epsilon guards division by zero only; the paper sets it to 1e-99 so it
+    # never distorts the ratio near the 1e-8 target-precision band.
     f_2 = jnp.power(
-        1e9 / (fn_val + 1e-8),
+        1e9 / (fn_val + 1e-99),
         noise_params.uniform_alpha * jax.random.uniform(key_2, shape=fn_val.shape),
     )
     return fn_val * f_1 * jnp.maximum(1.0, f_2)
@@ -211,8 +230,12 @@ def cauchy_noise(
     # Severe noise: alpha = 1, p = 0.2
     key_1, key_2, key_3 = jax.random.split(key, 3)
     indicator = jax.random.uniform(key_1, shape=fn_val.shape) < noise_params.cauchy_p
+    # A standard Cauchy draw is the ratio of two independent normals -- the
+    # paper's N(0,1)/|N(0,1)| with epsilon 1e-199 against division by zero.
+    # (An earlier version divided by |Uniform(0,1)|, which has ~30% heavier
+    # tails and the wrong central law.)
     cauchy = jax.random.normal(key_2, shape=fn_val.shape) / (
-        jnp.abs(jax.random.uniform(key_3, shape=fn_val.shape)) + 1e-8
+        jnp.abs(jax.random.normal(key_3, shape=fn_val.shape)) + 1e-199
     )
     return fn_val + noise_params.cauchy_alpha * jnp.maximum(
         0.0, 1000.0 + indicator * cauchy

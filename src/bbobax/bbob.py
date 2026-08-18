@@ -5,7 +5,7 @@ from collections.abc import Callable
 import jax
 import jax.numpy as jnp
 
-from .fitness_fns import bbob_fns
+from .fitness_fns import X_OPT_CONVENTIONS, bbob_fns
 from .noise import NoiseModel
 from .types import BBOBEval, BBOBParams, BBOBState, QDBBOBEval, QDBBOBParams
 
@@ -19,31 +19,55 @@ class BBOB:
         | dict[str, Callable[[jax.Array, BBOBState, BBOBParams], jax.Array]],
         min_num_dims: int = 2,
         max_num_dims: int = 10,
-        x_range: list[float] = [-5.0, 5.0],
-        x_opt_range: list[float] = [-4.0, 4.0],
-        f_opt_range: list[float] = [0.0, 0.0],
+        x_range: tuple[float, float] = (-5.0, 5.0),
+        x_opt_range: tuple[float, float] = (-4.0, 4.0),
+        f_opt_range: tuple[float, float] = (0.0, 0.0),
         clip_x: bool = False,
-        sample_rotation: bool = False,
+        sample_rotation: bool = True,
         noise_config: dict | None = None,
     ):
         """Initialize the BBOB task.
 
         Args:
-            fitness_fns: List or dictionary of fitness functions.
-            min_num_dims: Minimum number of dimensions.
-            max_num_dims: Maximum number of dimensions.
+            fitness_fns: Dictionary of fitness functions by name (canonical:
+                ``bbob_fns`` or a subset), or a bare list. Names drive the
+                per-function x_opt conventions, so ``params.x_opt`` is always
+                the true argmin; a bare list gets no conventions.
+            min_num_dims: Minimum number of dimensions (inclusive).
+            max_num_dims: Maximum number of dimensions (inclusive).
             x_range: Range of input variables.
-            x_opt_range: Range of optimal input variables.
-            f_opt_range: Range of optimal fitness values.
-            clip_x: Whether to clip input variables.
-            sample_rotation: Whether to sample rotation matrices.
-            noise_config: Configuration for noise models.
+            x_opt_range: Range of optimal input variables. BBOB draws x_opt in
+                [-4, 4]; per-function conventions then reshape the draw.
+            f_opt_range: Range of optimal fitness values. The default pins
+                f_opt to 0; official BBOB draws a 2-decimal Cauchy clipped to
+                +-1000 -- configure that explicitly if you want it.
+            clip_x: Whether to clip input variables. Official BBOB never
+                clips: boundary handling is the in-function penalty.
+            sample_rotation: Whether to sample rotation matrices. BBOB always
+                rotates; with False, R = Q = I and every rotated variant
+                collapses onto its axis-aligned base function (measured:
+                f10 becomes f2 exactly). Only disable this deliberately.
+            noise_config: Configuration for noise models. The default is the
+                plain noiseless suite with no stabilization, exactly COCO's
+                noiseless BBOB; pass a config to opt into noise.
 
         """
         if isinstance(fitness_fns, dict):
+            self.fitness_fn_names = list(fitness_fns.keys())
             self.fitness_fns = list(fitness_fns.values())
         else:
+            self.fitness_fn_names = None
             self.fitness_fns = fitness_fns
+
+        # Per-function preparation of the raw x_opt draw (identity where no
+        # convention exists, and everywhere for unnamed function lists).
+        if self.fitness_fn_names is not None:
+            self._x_opt_conventions = [
+                X_OPT_CONVENTIONS.get(name, lambda x_opt: x_opt)
+                for name in self.fitness_fn_names
+            ]
+        else:
+            self._x_opt_conventions = [lambda x_opt: x_opt] * len(self.fitness_fns)
 
         self.min_num_dims = min_num_dims
         self.max_num_dims = max_num_dims
@@ -53,34 +77,31 @@ class BBOB:
         self.clip_x = clip_x
         self.sample_rotation = sample_rotation
 
-        # Noise
+        # Noise: default is the plain noiseless suite -- exactly COCO's
+        # noiseless BBOB. Noise (and its stabilization) is opt-in.
         if noise_config is None:
             noise_config = {
-                "noise_model_names": [
-                    "noiseless",
-                    "gaussian",
-                    "uniform",
-                    "cauchy",
-                    "additive",
-                ],
-                "use_stabilization": True,
+                "noise_model_names": ("noiseless",),
+                "use_stabilization": False,
             }
         self.noise_model = NoiseModel(**noise_config)
 
         self.num_fns = len(self.fitness_fns)
 
-        # Prepare vectorized fitness evaluation
-        self._vmapped_fitness_fns = [
-            jax.vmap(fn, in_axes=(0, None, None)) for fn in self.fitness_fns
-        ]
-
     def sample(self, key: jax.Array) -> BBOBParams:
-        """Sample BBOB task parameters."""
-        key_fn, key_d, key_x, key_f, key_noise = jax.random.split(key, 5)
+        """Sample BBOB task parameters.
+
+        The raw uniform x_opt draw is reshaped by the sampled function's
+        convention (sign vectors, scalings, sign-forcing -- see
+        ``X_OPT_CONVENTIONS``), so ``params.x_opt`` is the true argmin, the
+        same invariant COCO keeps by storing the post-convention optimum.
+        """
+        key_fn, key_d, key_x, key_f, key_noise, key_instance = jax.random.split(key, 6)
 
         fn_id = jax.random.randint(key_fn, (), minval=0, maxval=self.num_fns)
+        # randint's maxval is exclusive; both bounds here are inclusive.
         num_dims = jax.random.randint(
-            key_d, (), minval=self.min_num_dims, maxval=self.max_num_dims
+            key_d, (), minval=self.min_num_dims, maxval=self.max_num_dims + 1
         )
 
         x_opt = jax.random.uniform(
@@ -89,6 +110,7 @@ class BBOB:
             minval=self.x_opt_range[0],
             maxval=self.x_opt_range[1],
         )
+        x_opt = jax.lax.switch(fn_id, self._x_opt_conventions, x_opt)
         f_opt = jax.random.uniform(
             key_f,
             minval=self.f_opt_range[0],
@@ -96,9 +118,9 @@ class BBOB:
         )
 
         # Sample noise model parameters
-        noise_params = self.noise_model.sample(key_noise)
+        noise_params = self.noise_model.sample(key_noise, num_dims)
 
-        return BBOBParams(fn_id, num_dims, x_opt, f_opt, noise_params)
+        return BBOBParams(fn_id, num_dims, x_opt, f_opt, key_instance, noise_params)
 
     def init(self, key: jax.Array, params: BBOBParams) -> BBOBState:
         """Initialize the task state.
@@ -195,9 +217,10 @@ class BBOB:
         # QR decomposition
         orthogonal_matrix, upper_triangular = jnp.linalg.qr(random_matrix)
 
-        # Extract diagonal and create sign correction matrix
+        # Extract diagonal and create sign correction matrix (zero-safe: a zero
+        # diagonal entry has measure zero but would otherwise produce NaN)
         diagonal = jnp.diag(upper_triangular)
-        sign_correction = jnp.diag(diagonal / jnp.abs(diagonal))
+        sign_correction = jnp.diag(jnp.where(diagonal == 0.0, 1.0, jnp.sign(diagonal)))
 
         # Apply sign correction
         rotation = orthogonal_matrix @ sign_correction
@@ -210,7 +233,7 @@ class BBOB:
 
     @classmethod
     def create_default(cls, **kwargs):
-        """Create a BBOB task with all standard functions."""
+        """Create a BBOB task with all 24 standard functions."""
         return cls(fitness_fns=bbob_fns, **kwargs)
 
 
@@ -243,12 +266,6 @@ class QDBBOB(BBOB):
             self.descriptor_fns = descriptor_fns
 
         self.descriptor_size = descriptor_size
-
-        # Vectorize descriptors
-        self._vmapped_descriptor_fns = [
-            jax.vmap(fn, in_axes=(0, None, None)) for fn in self.descriptor_fns
-        ]
-
         self.num_descriptors = len(self.descriptor_fns)
 
     def sample(self, key: jax.Array) -> QDBBOBParams:
@@ -271,6 +288,7 @@ class QDBBOB(BBOB):
             num_dims=base_params.num_dims,
             x_opt=base_params.x_opt,
             f_opt=base_params.f_opt,
+            key=base_params.key,
             noise_params=base_params.noise_params,
             descriptor_params=descriptor_params,
             descriptor_id=desc_id,
@@ -322,3 +340,20 @@ class QDBBOB(BBOB):
         mask = jnp.arange(self.max_num_dims) < num_dims
         descriptor_params = jnp.where(mask, descriptor_params, 0)
         return descriptor_params
+
+    @classmethod
+    def create_default(cls, descriptor_fns, descriptor_size: int = 2, **kwargs):
+        """Create a QD-BBOB task with all 24 standard functions.
+
+        Args:
+            descriptor_fns: List or dictionary of descriptor functions.
+            descriptor_size: Size of the descriptor vector.
+            **kwargs: Additional arguments for BBOB.
+
+        """
+        return cls(
+            descriptor_fns=descriptor_fns,
+            fitness_fns=bbob_fns,
+            descriptor_size=descriptor_size,
+            **kwargs,
+        )

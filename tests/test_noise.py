@@ -32,7 +32,7 @@ def test_noise_model_sample():
     model = NoiseModel()
     key = jax.random.key(0)
 
-    params = model.sample(key)
+    params = model.sample(key, 5)
 
     assert isinstance(params, NoiseParams)
     assert params.noise_id.shape == ()
@@ -53,7 +53,7 @@ def test_noise_model_apply(noise_type):
     key = jax.random.key(0)
 
     # Sample parameters (noise_id should correspond to the single available model)
-    params = model.sample(key)
+    params = model.sample(key, 5)
 
     # Create dummy function value
     fn_val = jnp.array([10.0, 100.0])

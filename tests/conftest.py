@@ -30,6 +30,7 @@ def mock_params():
             fn_id=jnp.array(0),
             num_dims=jnp.array(num_dims),
             x_opt=jnp.zeros(max_num_dims),
+            key=jax.random.key(0),
             f_opt=jnp.array(0.0),
             noise_params=NoiseParams(
                 noise_id=jnp.array(0),
@@ -60,6 +61,7 @@ def mock_qdbbob_params():
             fn_id=jnp.array(0),
             num_dims=jnp.array(num_dims),
             x_opt=jnp.zeros(max_num_dims),
+            key=jax.random.key(0),
             f_opt=jnp.array(0.0),
             noise_params=NoiseParams(
                 noise_id=jnp.array(0),
