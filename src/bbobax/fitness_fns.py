@@ -19,6 +19,7 @@ Two conventions to know:
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from .types import BBOBParams, BBOBState, IntScalar
 
@@ -26,11 +27,17 @@ from .types import BBOBParams, BBOBState, IntScalar
 def _lambda_alpha_vector(
     alpha: float, max_num_dims: int, num_dims: IntScalar
 ) -> jax.Array:
-    """Masked lambda alpha vector."""
+    """Masked lambda alpha vector.
+
+    The ``num_dims > 1`` guards throughout this module avoid a 0/0 exponent at
+    D = 1. Official BBOB builds the exponent with ``linspace(0, 1, D)``, which
+    is ``[0.]`` at D = 1, so every fallback here is the formula at exponent 0.
+    BBOB itself is defined for D >= 2, so this only fixes the degenerate case.
+    """
     mask = jnp.arange(max_num_dims) < num_dims
 
     exp = (
-        jnp.where(num_dims > 1, 0.5 * jnp.arange(max_num_dims) / (num_dims - 1), 0.5)
+        jnp.where(num_dims > 1, 0.5 * jnp.arange(max_num_dims) / (num_dims - 1), 0.0)
         * mask
     )
     return jnp.power(alpha, exp)
@@ -70,7 +77,7 @@ def transform_asy(x: jax.Array, beta: float, num_dims: IntScalar) -> jax.Array:
     exp = (
         1.0
         + beta
-        * jnp.where(num_dims > 1, jnp.arange(max_num_dims) / (num_dims - 1), 1.0)
+        * jnp.where(num_dims > 1, jnp.arange(max_num_dims) / (num_dims - 1), 0.0)
         * jnp.sqrt(safe_x)
         * mask
     )
@@ -84,6 +91,18 @@ def f_pen(x: jax.Array, num_dims: IntScalar) -> jax.Array:
 
     out = jnp.abs(x) - 5.0
     return jnp.sum(jnp.square(jnp.maximum(0.0, out * mask)))
+
+
+# Weierstrass is a truncated series with fixed coefficients: 12 summands, as
+# official (`F_WEIERSTRASS_SUMMANDS`). Built once with numpy rather than jnp:
+# a jnp constant would freeze its dtype at import time, silently staying
+# float32 under `jax_enable_x64` and costing precision.
+_WEIERSTRASS_K_ORDER = 12
+_WEIERSTRASS_HALF_POW_K = np.power(0.5, np.arange(_WEIERSTRASS_K_ORDER))
+_WEIERSTRASS_THREE_POW_K = np.power(3.0, np.arange(_WEIERSTRASS_K_ORDER))
+_WEIERSTRASS_F_0 = np.sum(
+    _WEIERSTRASS_HALF_POW_K * np.cos(np.pi * _WEIERSTRASS_THREE_POW_K)
+)
 
 
 def sphere(
@@ -112,7 +131,7 @@ def ellipsoidal(
         jnp.where(
             params.num_dims > 1,
             6.0 * jnp.arange(max_num_dims) / (params.num_dims - 1),
-            6.0,
+            0.0,
         )
         * mask
     )
@@ -156,7 +175,7 @@ def bueche_rastrigin(
         jnp.where(
             params.num_dims > 1,
             0.5 * jnp.arange(max_num_dims) / (params.num_dims - 1),
-            0.5,
+            0.0,
         )
         * mask
     )
@@ -188,7 +207,7 @@ def linear_slope(
 
     exp = (
         jnp.where(
-            params.num_dims > 1, jnp.arange(max_num_dims) / (params.num_dims - 1), 0.5
+            params.num_dims > 1, jnp.arange(max_num_dims) / (params.num_dims - 1), 0.0
         )
         * mask
     )
@@ -225,6 +244,10 @@ def step_ellipsoidal(
     z_hat = state.r @ (x - params.x_opt)
     z_hat = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z_hat
 
+    # floor(0.5 + z) is round-half-up, matching COCO's C (`coco_double_round`).
+    # The 2009 Python reference uses numpy's round-half-to-even instead, so the
+    # two officials disagree on exact .5 ties; ties have measure zero and the C
+    # is what the suite ships.
     z_tilde = jnp.where(
         jnp.abs(z_hat) > 0.5,
         jnp.floor(0.5 + z_hat),
@@ -237,13 +260,16 @@ def step_ellipsoidal(
         jnp.where(
             params.num_dims > 1,
             2.0 * jnp.arange(max_num_dims) / (params.num_dims - 1.0),
-            2.0,
+            0.0,
         )
         * mask
     )
     # No leading coefficient: the conditioning lives entirely in the exponent.
     # (An earlier version carried an extra x100 here; paper 2.7, f_step_ellipsoid.c
     # and bbobbenchmarks all agree there is none.)
+    # `exp` is masked as well as `out`: without it the padded coordinates take
+    # a huge exponent, and 10**exp overflows to inf in float32 before the outer
+    # mask can zero it -- inf * 0 is nan. The double masking is load-bearing.
     out = jnp.sum(jnp.power(10.0, exp) * jnp.square(z) * mask)
     return 0.1 * jnp.maximum(jnp.abs(z_hat[0]) / 1e4, out), f_pen(x, params.num_dims)
 
@@ -304,7 +330,7 @@ def ellipsoidal_rotated(
         jnp.where(
             params.num_dims > 1,
             6.0 * jnp.arange(max_num_dims) / (params.num_dims - 1),
-            6.0,
+            0.0,
         )
         * mask
     )
@@ -371,7 +397,7 @@ def different_powers(
         jnp.where(
             params.num_dims > 1,
             2.0 + 4.0 * jnp.arange(max_num_dims) / (params.num_dims - 1),
-            6.0,
+            2.0,
         )
         * mask
     )
@@ -412,17 +438,12 @@ def weierstrass(
     z = _lambda_alpha_vector(0.01, max_num_dims, params.num_dims) * z
     z = state.r @ z
 
-    k_order = 12
-    half_pow_k = jnp.power(0.5, jnp.arange(k_order))
-    three_pow_k = jnp.power(3.0, jnp.arange(k_order))
-    f_0 = jnp.sum(half_pow_k * jnp.cos(jnp.pi * three_pow_k))
-
     out = jnp.sum(
-        half_pow_k
-        * jnp.cos(2 * jnp.pi * three_pow_k * (z[:, None] + 0.5))
+        _WEIERSTRASS_HALF_POW_K
+        * jnp.cos(2 * jnp.pi * _WEIERSTRASS_THREE_POW_K * (z[:, None] + 0.5))
         * mask[:, None]
     )
-    return 10 * (out / params.num_dims - f_0) ** 3, 10 * f_pen(
+    return 10 * (out / params.num_dims - _WEIERSTRASS_F_0) ** 3, 10 * f_pen(
         x, params.num_dims
     ) / params.num_dims
 
@@ -447,7 +468,9 @@ def schaffers_f7(
     s = jnp.sqrt(jnp.square(z_i) + jnp.square(z_ip1))
 
     out = jnp.sum((jnp.sqrt(s) + jnp.sqrt(s) * jnp.sin(50 * s**0.2) ** 2) * mask)
-    return (out / (params.num_dims - 1.0)) ** 2, 10 * f_pen(x, params.num_dims)
+    # The sum runs over D - 1 consecutive pairs; guard the degenerate D = 1.
+    num_pairs = jnp.where(params.num_dims > 1, params.num_dims - 1.0, 1.0)
+    return (out / num_pairs) ** 2, 10 * f_pen(x, params.num_dims)
 
 
 def schaffers_f7_ill_conditioned(
@@ -470,7 +493,9 @@ def schaffers_f7_ill_conditioned(
     s = jnp.sqrt(jnp.square(z_i) + jnp.square(z_ip1))
 
     out = jnp.sum((jnp.sqrt(s) + jnp.sqrt(s) * jnp.sin(50 * s**0.2) ** 2) * mask)
-    return (out / (params.num_dims - 1.0)) ** 2, 10 * f_pen(x, params.num_dims)
+    # The sum runs over D - 1 consecutive pairs; guard the degenerate D = 1.
+    num_pairs = jnp.where(params.num_dims > 1, params.num_dims - 1.0, 1.0)
+    return (out / num_pairs) ** 2, 10 * f_pen(x, params.num_dims)
 
 
 def griewank_rosenbrock(
@@ -553,20 +578,25 @@ def gallagher_101_me(
     alpha_permuted = jax.random.permutation(subkey, alpha_set)
     alpha = alpha.at[0].set(1000.0)
     alpha = alpha.at[1:].set(alpha_permuted)
+    # C_i is diagonal, so carry the diagonal alone: (num_optima, D) rather than
+    # (num_optima, D, D).
     c = jax.vmap(
-        lambda alpha: lambda_alpha(alpha, max_num_dims, params.num_dims) / alpha**0.25
+        lambda alpha: (
+            _lambda_alpha_vector(alpha, max_num_dims, params.num_dims) / alpha**0.25
+        )
     )(alpha)
 
     key, subkey = jax.random.split(key)
     keys = jax.random.split(subkey, num_optima)
 
     def permute_diag(c_i, key):
+        # `p=mask` restricts the permutation to the active coordinates. It also
+        # fixes how many random bits are drawn, so replacing it (with None, or
+        # with a float array) silently changes every layout.
         perm = jax.random.choice(
             key, jnp.arange(max_num_dims), shape=(max_num_dims,), replace=False, p=mask
         )
-        diag = jnp.diag(c_i)
-        new_diag = diag[perm]
-        return c_i.at[jnp.arange(max_num_dims), jnp.arange(max_num_dims)].set(new_diag)
+        return c_i[perm]
 
     c = jax.vmap(permute_diag)(c, keys)
 
@@ -582,14 +612,12 @@ def gallagher_101_me(
     )
     y = y.at[0].set(params.x_opt) * mask
 
-    def f(c_i, y_i, w_i):
-        out = state.r @ (x - y_i)
-        out = c_i @ out
-        out = state.r.T @ out
-        out = jnp.dot(x - y_i, out * mask)
-        return w_i * jnp.exp(-out / (2 * params.num_dims))
-
-    out = jax.vmap(f)(c, y, w)
+    # (x - y_i)^T R^T C_i R (x - y_i) = z^T C_i z with z = R(x - y_i), and C_i
+    # diagonal makes that sum(c_i * z**2). All peaks at once: one (num_optima, D)
+    # by (D, D) matmul instead of three matrix-vector products per peak.
+    z = (x - y) @ state.r.T
+    out = jnp.sum(c * jnp.square(z) * mask, axis=-1)
+    out = w * jnp.exp(-out / (2 * params.num_dims))
     return jnp.square(transform_osz(10.0 - jnp.max(out))), f_pen(x, params.num_dims)
 
 
@@ -619,20 +647,25 @@ def gallagher_21_hi(
     alpha_permuted = jax.random.permutation(subkey, alpha_set)
     alpha = alpha.at[0].set(1000.0**2)
     alpha = alpha.at[1:].set(alpha_permuted)
+    # C_i is diagonal, so carry the diagonal alone: (num_optima, D) rather than
+    # (num_optima, D, D).
     c = jax.vmap(
-        lambda alpha: lambda_alpha(alpha, max_num_dims, params.num_dims) / alpha**0.25
+        lambda alpha: (
+            _lambda_alpha_vector(alpha, max_num_dims, params.num_dims) / alpha**0.25
+        )
     )(alpha)
 
     key, subkey = jax.random.split(key)
     keys = jax.random.split(subkey, num_optima)
 
     def permute_diag(c_i, key):
+        # `p=mask` restricts the permutation to the active coordinates. It also
+        # fixes how many random bits are drawn, so replacing it (with None, or
+        # with a float array) silently changes every layout.
         perm = jax.random.choice(
             key, jnp.arange(max_num_dims), shape=(max_num_dims,), replace=False, p=mask
         )
-        diag = jnp.diag(c_i)
-        new_diag = diag[perm]
-        return c_i.at[jnp.arange(max_num_dims), jnp.arange(max_num_dims)].set(new_diag)
+        return c_i[perm]
 
     c = jax.vmap(permute_diag)(c, keys)
 
@@ -648,14 +681,12 @@ def gallagher_21_hi(
     )
     y = y.at[0].set(x_opt) * mask
 
-    def f(c_i, y_i, w_i):
-        out = state.r @ (x - y_i)
-        out = c_i @ out
-        out = state.r.T @ out
-        out = jnp.dot(x - y_i, out * mask)
-        return w_i * jnp.exp(-out / (2 * params.num_dims))
-
-    out = jax.vmap(f)(c, y, w)
+    # (x - y_i)^T R^T C_i R (x - y_i) = z^T C_i z with z = R(x - y_i), and C_i
+    # diagonal makes that sum(c_i * z**2). All peaks at once: one (num_optima, D)
+    # by (D, D) matmul instead of three matrix-vector products per peak.
+    z = (x - y) @ state.r.T
+    out = jnp.sum(c * jnp.square(z) * mask, axis=-1)
+    out = w * jnp.exp(-out / (2 * params.num_dims))
     return jnp.square(transform_osz(10.0 - jnp.max(out))), f_pen(x, params.num_dims)
 
 
