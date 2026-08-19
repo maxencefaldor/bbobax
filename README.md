@@ -16,7 +16,7 @@ A high-performance reimplementation of the [COCO](https://coco-platform.org/) (C
 *   **Hardware Acceleration**: Run benchmarks on GPUs and TPUs for massive speedups.
 *   **Standard BBOB**: Includes standard single-objective BBOB functions (noiseless).
 *   **Noise Support**: Configurable noise models (Gaussian, Uniform, Cauchy, etc.) for robust optimization benchmarking.
-*   **Quality-Diversity (QD)**: Support for Quality-Diversity benchmarks with customizable descriptor functions.
+*   **Quality-Diversity (QD)**: Any of the 24 functions composes with any descriptor.
 *   **Flexible API**: Easy integration with existing JAX-based evolutionary computation libraries (e.g., EvoJAX, evosax).
 
 ## Fidelity to official BBOB
@@ -33,12 +33,12 @@ Guarantees you can rely on:
 *   `params.x_opt` is always the function's **true argmin**, so
     `f(params.x_opt) = f_opt` for all 24. Six functions constrain where their
     optimum may sit — a linear function is minimized on a corner, not inside
-    the box — and each carries that constraint with it in `BBOB_FNS`, applied
-    when the instance is drawn, exactly as COCO stores the post-constraint
-    optimum.
+    the box — and each declares that constraint itself by overriding
+    `_place_x_opt`, applied when the instance is drawn, exactly as COCO stores
+    the post-constraint optimum.
 *   Noise applies to the raw function value only; the boundary penalty and
     `f_opt` are added outside it, as the paper prescribes.
-*   The default `BBOB()` is the plain **noiseless** suite with rotations on —
+*   The default problem is the plain **noiseless** suite with rotations on —
     exactly COCO's noiseless BBOB. Noise is opt-in via `noise_config`.
 
 Deliberate, documented deviations from COCO (design choices, not accidents):
@@ -53,12 +53,15 @@ Deliberate, documented deviations from COCO (design choices, not accidents):
     family, verified bit-for-bit at the derived point.
 *   **Rotations** are Haar on SO(n) (COCO: O(n)); orientation is the only
     difference, and no benchmark property distinguishes the cosets.
-*   **Nothing about a task is sampled except the instance.** A task is one
-    function at one dimension, as COCO enumerates them; `sample` draws an
-    instance of it. To cover many functions or dimensions, hold many tasks
-    and loop — `bbobax.suite()` builds the standard 24. Under `jit` that loop
-    unrolls, so every task keeps its own compiled code and none pays for
-    dispatch.
+*   **Nothing about a problem is sampled except the instance.** A problem is
+    one function at one dimension, as COCO enumerates them; `sample` draws an
+    instance of it. To cover many functions or dimensions, hold many problems
+    and loop — `bbobax.suite()` builds the standard 24 and `bbobax.DIMENSIONS`
+    is COCO's own dimension set. Under `jit` that loop unrolls, so every
+    problem keeps its own compiled code and none pays for dispatch.
+*   **There is no evaluation state.** All 24 functions are memoryless: the
+    value at `x` does not depend on when `x` was asked. A dynamic benchmark
+    would be a different contract, not a parameter these 24 carry and ignore.
 *   The **`additive`** noise model is a bbobax extension with no COCO
     counterpart.
 
@@ -95,90 +98,98 @@ pip install -e .
 
 ### Basic BBOB Example
 
-Here is a minimal example of how to initialize a BBOB task, sample a problem instance, and evaluate a solution.
+Each of the 24 functions is a class. Instantiating one fixes the function and
+the dimension; `sample` draws an instance of it.
 
 ```python
 import jax
-from bbobax import BBOB
+from bbobax import Sphere
 
-# Initialize BBOB task with default functions
-bbob = BBOB("sphere", num_dims=10)
+# One function at one dimension -- that is the whole problem
+problem = Sphere(num_dims=10)
 
-# Sample a task instance (function ID, dimensions, optimal values, etc.)
-key = jax.random.key(0)
-key_task, key_init, key_eval, key_x = jax.random.split(key, 4)
-task_params = bbob.sample(key_task)
+key_sample, key_x, key_eval = jax.random.split(jax.random.key(0), 3)
 
-# Initialize the evaluation state (rotations live in the params)
-state = bbob.init(task_params)
+# Draw an instance: its optimum, rotations, and noise settings
+params = problem.sample(key_sample)
 
 # Sample a random solution in the search space
-x = bbob.sample_x(key_x)
+x = problem.sample_x(key_x)
 
-# Evaluate the solution
-# Returns updated state and evaluation metrics (fitness)
-state, eval_metrics = bbob.evaluate(key_eval, x, state, task_params)
+# Evaluate it
+evaluation = problem.evaluate(key_eval, x, params)
 
-print(f"Function: {bbob.name}")
-print(f"Dimensions: {bbob.num_dims}")
-print(f"Fitness: {eval_metrics.fitness}")
+print(f"Function: {problem.name}")
+print(f"Dimensions: {problem.num_dims}")
+print(f"Fitness: {evaluation.fitness}")
 ```
 
 ### Quality-Diversity (QD) Example
 
-BBOBax also supports Quality-Diversity optimization tasks where solutions are evaluated based on both fitness and a behavior descriptor.
+BBOBax also supports Quality-Diversity, where solutions are scored on both
+fitness and a behaviour descriptor. A descriptor is orthogonal to a function —
+any of the 24 pairs with any descriptor — so a QD problem is **composed**:
 
 ```python
 import jax
-from bbobax import QDBBOB, get_random_projection_descriptor
+from bbobax import QDProblem, RandomProjection, Rastrigin
 
-# Initialize QD-BBOB task
-qd_bbob = QDBBOB(
-    fitness_fn="rastrigin",
-    descriptor_fn=get_random_projection_descriptor(),
-    descriptor_size=2,
-    num_dims=10,
+problem = QDProblem(
+    Rastrigin(num_dims=10),
+    RandomProjection(descriptor_size=2),
 )
 
-# Sample task
-key = jax.random.key(42)
-key_task, key_init, key_eval, key_x = jax.random.split(key, 4)
-task_params = qd_bbob.sample(key_task)
+key_sample, key_x, key_eval = jax.random.split(jax.random.key(42), 3)
 
-# Initialize state
-state = qd_bbob.init(task_params)
+params = problem.sample(key_sample)
+x = problem.sample_x(key_x)
+evaluation = problem.evaluate(key_eval, x, params)
 
-# Sample solution
-x = qd_bbob.sample_x(key_x)
-
-# Evaluate
-state, eval_metrics = qd_bbob.evaluate(key_eval, x, state, task_params)
-
-print(f"Fitness: {eval_metrics.fitness}")
-print(f"Descriptor: {eval_metrics.descriptor}")
+print(f"Fitness: {evaluation.fitness}")
+print(f"Descriptor: {evaluation.descriptor}")
 ```
 
 ### Covering the suite
 
-A task is one function, so covering many means holding many tasks. The loop
-unrolls under `jit`, which is both faithful to COCO's structure and faster than
-dispatching inside one task.
+A problem is one function, so covering many means holding many problems. The
+loop unrolls under `jit`, which is both faithful to COCO's structure and faster
+than dispatching inside one problem.
 
 ```python
 import jax
 import bbobax
 
-tasks = bbobax.suite(num_dims=10)  # the 24 standard functions
+problems = bbobax.suite(num_dims=10)  # the 24 standard functions
 
 key = jax.random.key(0)
-for name, task in tasks.items():
+for name, problem in problems.items():
     key, key_sample, key_x, key_eval = jax.random.split(key, 4)
-    params = task.sample(key_sample)
-    state = task.init(params)
-    x = task.sample_x(key_x)
-    _, evaluation = task.evaluate(key_eval, x, state, params)
+    params = problem.sample(key_sample)
+    x = problem.sample_x(key_x)
+    evaluation = problem.evaluate(key_eval, x, params)
     print(f"{name:>28}: {evaluation.fitness:.4g}")
 ```
+
+### Meta-learning across functions and dimensions
+
+Array shapes are static in JAX, so a batch cannot mix dimensions. The dimension
+is therefore a Python loop variable and the batch axis is instances *within* a
+dimension — which covers every dimension on every meta-step instead of sampling
+one, and needs only the six compilations `bbobax.DIMENSIONS` names.
+
+```python
+import jax
+import bbobax
+
+for num_dims in bbobax.DIMENSIONS:  # (2, 3, 5, 10, 20, 40), COCO's own set
+    for name, problem in bbobax.suite(num_dims=num_dims).items():
+        keys = jax.random.split(jax.random.key(0), 32)
+        params = jax.vmap(problem.sample)(keys)  # 32 instances, batched
+        ...
+```
+
+This requires the meta-learned parameters to be dimension-independent, which is
+a property of the algorithm rather than of the benchmark.
 
 ## Documentation
 

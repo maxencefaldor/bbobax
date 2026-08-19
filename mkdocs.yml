@@ -51,10 +51,9 @@ nav:
       - Meta-BBO: notebooks/03_meta_bbo.ipynb
       - Quality-Diversity: notebooks/04_qd.ipynb
   - API Reference:
-      - BBOB: reference/bbob.md
-      - QD-BBOB: reference/qdbbob.md
-      - Fitness Functions: reference/fitness_fns.md
-      - Descriptor Functions: reference/descriptor_fns.md
+      - Problem: reference/problem.md
+      - Functions: reference/functions.md
+      - Quality-Diversity: reference/qd.md
       - Noise Models: reference/noise.md
       - Types: reference/types.md
   - License: license.md

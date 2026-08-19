@@ -1,0 +1,3 @@
+# Functions
+
+::: bbobax.functions
