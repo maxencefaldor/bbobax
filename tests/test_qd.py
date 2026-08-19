@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from bbobax.functions import BBOB_PROBLEMS, Rastrigin, Sphere
+from bbobax.bbob import BBOB_PROBLEMS, Rastrigin, Sphere
 from bbobax.qd import Descriptor, QDEval, QDParams, QDProblem, RandomProjection
 
 

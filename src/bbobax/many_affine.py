@@ -32,7 +32,7 @@ Add it back to compare against a reference value.
 import jax
 import jax.numpy as jnp
 
-from .functions import BBOB_PROBLEMS
+from .bbob import BBOB_PROBLEMS
 from .problem import BBOBParams, BBOBProblem
 
 

@@ -13,7 +13,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from bbobax.functions import DIMENSIONS, Sphere
+from bbobax.bbob import Sphere
 from bbobax.noise import (
     NOISE_MODELS,
     TARGET_PRECISION,
@@ -26,6 +26,7 @@ from bbobax.noise import (
     _epsilon,
     stabilize,
 )
+from bbobax.problem import DIMENSIONS
 
 # `bbobbenchmarks.py`: `tol = 1e-8`, and every noisy model ends with
 # `fval += 1.01 * tol` then `fval[ftrue < tol] = ftrue[...]`.

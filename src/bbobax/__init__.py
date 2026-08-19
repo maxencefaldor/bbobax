@@ -1,8 +1,7 @@
 """Black-box Optimization Benchmarking in JAX."""
 
-from .functions import (
+from .bbob import (
     BBOB_PROBLEMS,
-    DIMENSIONS,
     AttractiveSector,
     BentCigar,
     BuecheRastrigin,
@@ -40,8 +39,9 @@ from .noise import (
     Uniform,
 )
 from .noisy import NOISY_PROBLEMS, Noisy, noisy_suite
-from .problem import BBOBEval, BBOBParams, BBOBProblem
+from .problem import DIMENSIONS, BBOBEval, BBOBParams, BBOBProblem
 from .qd import Descriptor, QDEval, QDParams, QDProblem, RandomProjection
+from .transforms import f_pen, lambda_alpha, transform_asy, transform_osz
 
 __all__ = [
     # The contract, and the standard suite built on it
@@ -83,6 +83,11 @@ __all__ = [
     "QDProblem",
     "Descriptor",
     "RandomProjection",
+    # The transformations functions are built from, for building your own
+    "lambda_alpha",
+    "transform_osz",
+    "transform_asy",
+    "f_pen",
     # Noise models, held by a problem rather than switched on
     "NoiseModel",
     "NOISE_MODELS",

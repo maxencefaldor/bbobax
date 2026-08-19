@@ -34,7 +34,7 @@ import numpy as np
 import pytest
 
 from _official import bbobbenchmarks as bb
-from bbobax.functions import BBOB_PROBLEMS
+from bbobax.bbob import BBOB_PROBLEMS
 from bbobax.problem import BBOBParams
 from conftest import noiseless_params
 

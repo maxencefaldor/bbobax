@@ -29,7 +29,7 @@ function that already exists.
 
 import jax
 
-from .functions import (
+from .bbob import (
     DifferentPowers,
     EllipsoidalRotated,
     Gallagher101Me,
@@ -38,10 +38,10 @@ from .functions import (
     SchaffersF7,
     Sphere,
     StepEllipsoidal,
-    f_pen,
 )
 from .noise import Cauchy, Gaussian, NoiseModel, Uniform
 from .problem import BBOBParams, BBOBProblem
+from .transforms import f_pen
 
 
 class Noisy(BBOBProblem):

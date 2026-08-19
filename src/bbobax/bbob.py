@@ -1,4 +1,4 @@
-"""The 24 standard BBOB functions, one class each.
+"""The bbob suite: the 24 standard noiseless functions, one class each.
 
 Every function is verified numerically against the official 2009 BBOB
 implementation (`bbobbenchmarks.py`) on identical instances in float64 -- see
@@ -31,52 +31,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from .problem import BBOBParams, BBOBProblem
-
-
-def lambda_alpha(condition: float, num_dims: int) -> jax.Array:
-    """Conditioning transformation function: `condition ** (0.5 i / (D - 1))`.
-
-    The paper's Lambda^alpha, and COCO's `transform_vars_conditioning`, which
-    spells the same thing as `pow(sqrt(condition), i / (D - 1))`.
-    """
-    exp = 0.5 * jnp.arange(num_dims) / (num_dims - 1)
-    return jnp.power(condition, exp)
-
-
-def transform_osz(element: jax.Array) -> jax.Array:
-    """Oscillation transformation function."""
-    # Avoid log(0) by substituting 0 with 1 (log(1) = 0), handling the 0 case
-    # explicitly with where.
-    safe_element = jnp.abs(element) + (element == 0.0)
-    x_hat = jnp.where(element == 0.0, 0.0, jnp.log(safe_element))
-
-    c_1 = jnp.where(element > 0.0, 10.0, 5.5)
-    c_2 = jnp.where(element > 0.0, 7.9, 3.1)
-
-    return jnp.sign(element) * jnp.exp(
-        x_hat + 0.049 * (jnp.sin(c_1 * x_hat) + jnp.sin(c_2 * x_hat))
-    )
-
-
-def transform_asy(x: jax.Array, beta: float) -> jax.Array:
-    """Asymmetry transformation function.
-
-    The untaken branch is sanitized before `sqrt`/`power` so that `jax.grad`
-    through negative coordinates yields zeros instead of NaN (the standard
-    double-`where` guard); values are unchanged.
-    """
-    num_dims = x.shape[0]
-
-    safe_x = jnp.where(x > 0.0, x, 0.0)
-    exp = 1.0 + beta * (jnp.arange(num_dims) / (num_dims - 1)) * jnp.sqrt(safe_x)
-    return jnp.where(x > 0.0, jnp.power(safe_x, exp), x)
-
-
-def f_pen(x: jax.Array) -> jax.Array:
-    """Boundary penalty."""
-    out = jnp.abs(x) - 5.0
-    return jnp.sum(jnp.square(jnp.maximum(0.0, out)))
-
+from .transforms import f_pen, lambda_alpha, transform_asy, transform_osz
 
 # --- Part 1: Separable functions ----------------------------------------------
 
@@ -792,16 +747,6 @@ _PROBLEMS: tuple[type[BBOBProblem], ...] = (
 BBOB_PROBLEMS: dict[str, type[BBOBProblem]] = {
     problem.name: problem for problem in _PROBLEMS
 }
-
-# The dimensions COCO's bbob suite enumerates, from `suite_bbob.c`:
-# `const size_t dimensions[] = { 2, 3, 5, 10, 20, 40 };`.
-#
-# Array shapes are static in JAX, so a problem fixes its dimension and callers
-# that want several loop over these in Python. For meta-learning that loop is
-# an advantage over sampling a dimension: every meta-step sees every dimension,
-# which is stratified rather than noisy, and there are only six compilations to
-# cache. It does require the learned parameters to be dimension-independent.
-DIMENSIONS: tuple[int, ...] = (2, 3, 5, 10, 20, 40)
 
 
 def suite(names: list[str] | None = None, **kwargs) -> dict[str, BBOBProblem]:
