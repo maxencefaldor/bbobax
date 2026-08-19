@@ -23,6 +23,12 @@ from nbclient import NotebookClient
 NOTEBOOKS = pathlib.Path(__file__).resolve().parent.parent / "notebooks"
 TIMEOUT_S = 1800
 
+# The portable kernelspec. Jupyter stamps whichever environment happened to run
+# the notebook -- ".venv", "autoresearch-qd (3.14.x)" -- and that name then
+# ships to readers and to Colab, where it means nothing. `name` is what any
+# runner actually resolves; only the display name needs pinning.
+KERNELSPEC = {"display_name": "Python 3", "language": "python", "name": "python3"}
+
 
 def execute(path: pathlib.Path, save: bool = False) -> float:
     """Execute one notebook and return how long it took.
@@ -56,6 +62,7 @@ def execute(path: pathlib.Path, save: bool = False) -> float:
         # Put the install cells back where they were, output-free as they were.
         for index in skipped:
             runnable.cells.insert(index, notebook.cells[index])
+        runnable.metadata["kernelspec"] = dict(KERNELSPEC)
         path.write_text(nbformat.writes(runnable))
     return seconds
 
