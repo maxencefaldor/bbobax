@@ -296,7 +296,7 @@ class QDBBOB(BBOB):
         )
 
         # Descriptor params
-        descriptor_params = self.gaussian_random_projection(
+        descriptor_params = self.generate_gaussian_projection(
             key_desc_params, base_params.num_dims
         )
 
@@ -341,7 +341,7 @@ class QDBBOB(BBOB):
         bbob_eval = QDBBOBEval(fitness=bbob_eval.fitness, descriptor=descriptor)
         return state, bbob_eval
 
-    def gaussian_random_projection(
+    def generate_gaussian_projection(
         self, key: jax.Array, num_dims: IntScalar
     ) -> jax.Array:
         """Generate a random Gaussian projection matrix.
