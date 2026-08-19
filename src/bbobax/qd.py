@@ -36,11 +36,29 @@ class Descriptor(Protocol):
     descriptor_size: int
 
     def sample(self, key: jax.Array, num_dims: int) -> Any:
-        """Draw this descriptor's instance data for a problem of `num_dims`."""
+        """Sample this descriptor's instance data.
+
+        Args:
+            key: JAX random key.
+            num_dims: Dimensionality of the problem being described.
+
+        Returns:
+            The instance's descriptor parameters.
+
+        """
         ...
 
     def evaluate(self, x: jax.Array, params: Any) -> jax.Array:
-        """Return the descriptor of one solution, shape `(descriptor_size,)`."""
+        """Compute the descriptor of a solution.
+
+        Args:
+            x: Input solution, shape `(num_dims,)`.
+            params: Instance descriptor parameters.
+
+        Returns:
+            The descriptor, shape `(descriptor_size,)`.
+
+        """
         ...
 
 
@@ -66,27 +84,49 @@ class RandomProjection:
         self.descriptor_size = descriptor_size
 
     def sample(self, key: jax.Array, num_dims: int) -> jax.Array:
-        """Draw the projection matrix, shape `(descriptor_size, num_dims)`."""
+        """Sample the instance's projection matrix.
+
+        Args:
+            key: JAX random key.
+            num_dims: Dimensionality of the problem being described.
+
+        Returns:
+            A `(descriptor_size, num_dims)` matrix.
+
+        """
         return jax.random.normal(
             key, shape=(self.descriptor_size, num_dims)
         ) / jnp.sqrt(self.descriptor_size)
 
     def evaluate(self, x: jax.Array, params: jax.Array) -> jax.Array:
-        """Project one solution: `(descriptor_size, num_dims) @ (num_dims,)`."""
+        """Compute the descriptor of a solution: the projection of `x`.
+
+        Args:
+            x: Input solution, shape `(num_dims,)`.
+            params: The instance's projection matrix.
+
+        Returns:
+            The descriptor, shape `(descriptor_size,)`.
+
+        """
         return params @ x
 
 
 class QDProblem:
     """A BBOB problem paired with a descriptor.
 
-    Args:
-        problem: The function being optimized.
-        descriptor: What makes two equally-fit solutions different.
-
+    The pair is the problem: `sample` draws an instance of each half, and
+    `evaluate` returns the fitness and the descriptor together.
     """
 
     def __init__(self, problem: BBOBProblem, descriptor: Descriptor):
-        """Pair a problem with a descriptor."""
+        """Initialize the Quality-Diversity problem.
+
+        Args:
+            problem: The function being optimized.
+            descriptor: What makes two equally-fit solutions different.
+
+        """
         self.problem = problem
         self.descriptor = descriptor
 
@@ -111,7 +151,7 @@ class QDProblem:
         return self.descriptor.descriptor_size
 
     def sample(self, key: jax.Array) -> QDParams:
-        """Sample an instance: the problem's, and the descriptor's.
+        """Sample an instance of this problem: the function's, and the descriptor's.
 
         Args:
             key: JAX random key.
@@ -122,12 +162,12 @@ class QDProblem:
         """
         key_problem, key_descriptor = jax.random.split(key)
         return QDParams(
-            problem_params=self.problem.sample(key_problem),
-            descriptor_params=self.descriptor.sample(key_descriptor, self.num_dims),
+            problem=self.problem.sample(key_problem),
+            descriptor=self.descriptor.sample(key_descriptor, self.num_dims),
         )
 
     def evaluate(self, key: jax.Array, x: jax.Array, params: QDParams) -> QDEval:
-        """Evaluate the fitness and descriptor of a solution.
+        """Evaluate the fitness and the descriptor of a solution.
 
         Args:
             key: JAX random key, consumed by the noise model.
@@ -138,8 +178,8 @@ class QDProblem:
             The evaluation results.
 
         """
-        evaluation = self.problem.evaluate(key, x, params.problem_params)
-        descriptor = self.descriptor.evaluate(x, params.descriptor_params)
+        evaluation = self.problem.evaluate(key, x, params.problem)
+        descriptor = self.descriptor.evaluate(x, params.descriptor)
         return QDEval(fitness=evaluation.fitness, descriptor=descriptor)
 
     def sample_x(self, key: jax.Array) -> jax.Array:
@@ -149,7 +189,7 @@ class QDProblem:
             key: JAX random key.
 
         Returns:
-            Random solution within the defined range, shape `(num_dims,)`.
+            Random solution within `x_range`, shape `(num_dims,)`.
 
         """
         return self.problem.sample_x(key)

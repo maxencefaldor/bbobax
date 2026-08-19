@@ -4,7 +4,8 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from bbobax.types import BBOBParams, NoiseParams
+from bbobax.noise import NoiselessParams
+from bbobax.types import BBOBParams
 
 # The whole suite runs in float64: the alignment tests (tests/test_alignment.py)
 # compare against the official 2009 implementation at 1e-9 relative error, and
@@ -14,17 +15,9 @@ from bbobax.types import BBOBParams, NoiseParams
 jax.config.update("jax_enable_x64", True)
 
 
-def zero_noise_params() -> NoiseParams:
-    """All-zero noise parameters (noise_id 0 selects the first model)."""
-    return NoiseParams(
-        noise_id=jnp.array(0),
-        gaussian_beta=jnp.array(0.0),
-        uniform_alpha=jnp.array(0.0),
-        uniform_beta=jnp.array(0.0),
-        cauchy_alpha=jnp.array(0.0),
-        cauchy_p=jnp.array(0.0),
-        additive_std=jnp.array(0.0),
-    )
+def noiseless_params() -> NoiselessParams:
+    """Return the default model's parameters; `Noiseless` draws nothing."""
+    return NoiselessParams()
 
 
 @pytest.fixture
@@ -42,7 +35,7 @@ def mock_params():
             f_opt=jnp.array(0.0),
             r=jnp.eye(num_dims),
             q=jnp.eye(num_dims),
-            noise_params=zero_noise_params(),
+            noise_params=noiseless_params(),
         )
 
     return _get_mock_params

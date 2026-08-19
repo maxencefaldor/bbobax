@@ -36,7 +36,7 @@ import pytest
 from _official import bbobbenchmarks as bb
 from bbobax.functions import BBOB_PROBLEMS
 from bbobax.types import BBOBParams
-from conftest import zero_noise_params
+from conftest import noiseless_params
 
 # Tolerances: values must match to 1e-9 relative against |f - fopt|, with an
 # absolute floor of 1e-8 for near-zero values; mapping reconstructions must
@@ -217,7 +217,7 @@ def _make_params(x_opt, f_opt, r, q, key=None):
         q=jnp.asarray(q, dtype=jnp.float64),
         # `_value` never reads noise_params; `evaluate` does, and it is not on
         # this path. Zeros keep the params well-formed all the same.
-        noise_params=zero_noise_params(),
+        noise_params=noiseless_params(),
     )
 
 

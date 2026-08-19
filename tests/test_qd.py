@@ -57,9 +57,9 @@ def test_qd_problem_workflow():
 
     params = problem.sample(key)
     assert isinstance(params, QDParams)
-    assert params.descriptor_params.shape == (descriptor_size, num_dims)
+    assert params.descriptor.shape == (descriptor_size, num_dims)
     # Composed, not inherited: the problem's own instance is nested whole.
-    assert params.problem_params.x_opt.shape == (num_dims,)
+    assert params.problem.x_opt.shape == (num_dims,)
 
     x = problem.sample_x(key)
     evaluation = problem.evaluate(key, x, params)
@@ -90,13 +90,13 @@ def test_qd_fitness_is_the_underlying_fitness():
     x = problem.sample_x(jax.random.key(1))
 
     qd_evaluation = problem.evaluate(jax.random.key(2), x, params)
-    base_evaluation = base.evaluate(jax.random.key(2), x, params.problem_params)
+    base_evaluation = base.evaluate(jax.random.key(2), x, params.problem)
 
     assert float(qd_evaluation.fitness) == float(base_evaluation.fitness)
     # And the descriptor is exactly the projection of x.
     np.testing.assert_allclose(
         np.asarray(qd_evaluation.descriptor),
-        np.asarray(params.descriptor_params) @ np.asarray(x),
+        np.asarray(params.descriptor) @ np.asarray(x),
         rtol=1e-12,
     )
 

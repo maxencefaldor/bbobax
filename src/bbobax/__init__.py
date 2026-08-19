@@ -29,10 +29,18 @@ from .functions import (
     Weierstrass,
     suite,
 )
-from .noise import NoiseModel
+from .noise import (
+    NOISE_MODELS,
+    Additive,
+    Cauchy,
+    Gaussian,
+    Noise,
+    Noiseless,
+    Uniform,
+)
 from .problem import BBOBProblem
 from .qd import Descriptor, QDProblem, RandomProjection
-from .types import BBOBEval, BBOBParams, NoiseParams, QDEval, QDParams
+from .types import BBOBEval, BBOBParams, QDEval, QDParams
 
 __all__ = [
     # The contract, and the standard suite built on it
@@ -69,11 +77,17 @@ __all__ = [
     "QDProblem",
     "Descriptor",
     "RandomProjection",
-    # Noise, and the data types
-    "NoiseModel",
+    # Noise models, held by a problem rather than switched on
+    "Noise",
+    "NOISE_MODELS",
+    "Noiseless",
+    "Gaussian",
+    "Uniform",
+    "Cauchy",
+    "Additive",
+    # The data types
     "BBOBParams",
     "BBOBEval",
     "QDParams",
     "QDEval",
-    "NoiseParams",
 ]

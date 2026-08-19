@@ -3,13 +3,13 @@
 `BBOBProblem` is the contract every benchmark function in bbobax satisfies:
 
     problem = Sphere(num_dims=10)
-    params = problem.sample(key)             # draw an instance
+    params = problem.sample(key)  # draw an instance
     evaluation = problem.evaluate(key, x, params)
 
 Instance generation is *per function*, not merely per suite -- where the
 optimum may sit, which rotations matter, what extra structure a landscape needs
 -- so the function and the generation of its instances live in one object. A
-subclass supplies `_value`, and overrides `_place_x_opt` when its definition
+subclass supplies `_value`, and overrides `_sample_x_opt` when its definition
 constrains where the optimum can be.
 
 There is deliberately no evaluation state. All 24 BBOB functions are
@@ -19,16 +19,14 @@ different contract and would get its own, rather than a parameter these 24
 carry and ignore.
 """
 
-from abc import ABC, abstractmethod
-
 import jax
 import jax.numpy as jnp
 
-from .noise import NoiseModel
+from .noise import Noise, Noiseless
 from .types import BBOBEval, BBOBParams
 
 
-class BBOBProblem(ABC):
+class BBOBProblem:
     """One BBOB function at one fixed dimension.
 
     That is COCO's own structure -- a suite enumerates function x dimension x
@@ -41,6 +39,9 @@ class BBOBProblem(ABC):
     keeps its own compiled code and nothing pays for dispatch -- unlike a
     single problem that switches over functions, which under `vmap` must
     evaluate every branch for every solution.
+
+    Subclasses supply `_value`, and override `_sample_x_opt` when their own
+    definition constrains where the optimum can be.
     """
 
     #: The problem's name, and its key in `BBOB_PROBLEMS`.
@@ -54,15 +55,16 @@ class BBOBProblem(ABC):
         f_opt_range: tuple[float, float] = (0.0, 0.0),
         clip_x: bool = False,
         sample_rotation: bool = True,
-        noise_config: dict | None = None,
+        noise: Noise | None = None,
     ):
         """Initialize the problem.
 
         Args:
             num_dims: The problem dimension, at least 2 as BBOB requires.
             x_range: Range of input variables.
-            x_opt_range: Range the raw optimum is drawn from, before the
-                function's own constraint reshapes it. BBOB uses [-4, 4].
+            x_opt_range: Range the optimum is drawn from. BBOB uses [-4, 4].
+                This is the *default* draw: a function whose definition pins its
+                optimum elsewhere overrides `_sample_x_opt` and may ignore it.
             f_opt_range: Range of optimal fitness values. The default pins
                 f_opt to 0; official BBOB draws a 2-decimal Cauchy clipped to
                 +-1000 -- configure that explicitly if you want it.
@@ -72,9 +74,10 @@ class BBOBProblem(ABC):
                 rotates; with False, R = Q = I and every rotated variant
                 collapses onto its axis-aligned base function (measured:
                 f10 becomes f2 exactly). Only disable this deliberately.
-            noise_config: Configuration for noise models. The default is the
-                plain noiseless suite with no stabilization, exactly COCO's
-                noiseless BBOB; pass a config to opt into noise.
+            noise: The noise model. The default is `Noiseless`, exactly
+                COCO's noiseless BBOB; pass a model to opt into noise. The
+                model is held, not switched on, so nothing evaluates a model
+                this problem does not use.
 
         Raises:
             ValueError: If `num_dims` is below 2.
@@ -89,21 +92,16 @@ class BBOBProblem(ABC):
         self.clip_x = clip_x
         self.sample_rotation = sample_rotation
 
-        # Noise: default is the plain noiseless suite -- exactly COCO's
-        # noiseless BBOB. Noise (and its stabilization) is opt-in.
-        if noise_config is None:
-            noise_config = {
-                "noise_model_names": ("noiseless",),
-                "use_stabilization": False,
-            }
-        self.noise_model = NoiseModel(**noise_config)
+        # Default is the plain noiseless suite -- exactly COCO's noiseless
+        # BBOB. Noise is opt-in.
+        self.noise = Noiseless() if noise is None else noise
 
     def sample(self, key: jax.Array) -> BBOBParams:
         """Sample an instance of this problem.
 
-        The raw uniform x_opt draw is mapped into the positions this function
-        admits (`_place_x_opt`), so `params.x_opt` is always the true argmin --
-        the invariant COCO keeps by storing the post-constraint optimum.
+        `params.x_opt` is always the true argmin, whatever `_sample_x_opt` had
+        to do to draw it -- the invariant COCO keeps by storing the optimum its
+        own construction ends up at.
 
         Args:
             key: JAX random key.
@@ -114,14 +112,7 @@ class BBOBProblem(ABC):
         """
         key_x, key_f, key_r, key_q, key_noise, key_instance = jax.random.split(key, 6)
 
-        x_opt = self._place_x_opt(
-            jax.random.uniform(
-                key_x,
-                shape=(self.num_dims,),
-                minval=self.x_opt_range[0],
-                maxval=self.x_opt_range[1],
-            )
-        )
+        x_opt = self._sample_x_opt(key_x)
         f_opt = jax.random.uniform(
             key_f,
             minval=self.f_opt_range[0],
@@ -138,7 +129,7 @@ class BBOBProblem(ABC):
             r = jnp.eye(self.num_dims)
             q = jnp.eye(self.num_dims)
 
-        noise_params = self.noise_model.sample(key_noise, self.num_dims)
+        noise_params = self.noise.sample(key_noise, self.num_dims)
 
         return BBOBParams(key_instance, x_opt, f_opt, r, q, noise_params)
 
@@ -161,7 +152,7 @@ class BBOBProblem(ABC):
 
         # Noise applies to the raw value alone; the boundary penalty and f_opt
         # are added outside it, as the noisy-functions paper prescribes.
-        noisy = self.noise_model.apply(key, value, params.noise_params)
+        noisy = self.noise.apply(key, value, params.noise_params)
         return BBOBEval(fitness=noisy + penalty + params.f_opt)
 
     def sample_x(self, key: jax.Array) -> jax.Array:
@@ -171,7 +162,7 @@ class BBOBProblem(ABC):
             key: JAX random key.
 
         Returns:
-            Random solution within the defined range, shape `(num_dims,)`.
+            Random solution within `x_range`, shape `(num_dims,)`.
 
         """
         return jax.random.uniform(
@@ -181,25 +172,29 @@ class BBOBProblem(ABC):
             maxval=self.x_range[1],
         )
 
-    def _place_x_opt(self, x_opt: jax.Array) -> jax.Array:
-        """Map a raw uniform draw into the optimum positions this function admits.
+    def _sample_x_opt(self, key: jax.Array) -> jax.Array:
+        """Sample the instance's optimum.
 
-        The default is the draw unchanged: most functions accept an optimum
-        anywhere in the box. Six do not, and override this -- `LinearSlope` is
-        the clearest case, since a linear function on a box has no interior
-        minimum, so its optimum is always a corner and only the *sign* of the
-        draw survives.
+        The default is a uniform draw from `x_opt_range`, which is what most of
+        the 24 admit. A function whose definition constrains its optimum
+        overrides this and draws what it actually needs -- `LinearSlope` draws a
+        corner of the box, because a linear function has no interior minimum, so
+        a continuous draw would be a coordinate it never uses.
 
         Args:
-            x_opt: A raw uniform draw from `x_opt_range`, shape `(num_dims,)`.
+            key: JAX random key.
 
         Returns:
             The instance's true argmin, shape `(num_dims,)`.
 
         """
-        return x_opt
+        return jax.random.uniform(
+            key,
+            shape=(self.num_dims,),
+            minval=self.x_opt_range[0],
+            maxval=self.x_opt_range[1],
+        )
 
-    @abstractmethod
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
         """Return the raw function value and the boundary penalty at `x`.
 
@@ -213,7 +208,11 @@ class BBOBProblem(ABC):
         Returns:
             The value and the boundary penalty, both scalars.
 
+        Raises:
+            NotImplementedError: Always; a subclass supplies the function.
+
         """
+        raise NotImplementedError(f"{type(self).__name__} defines no _value")
 
     @staticmethod
     def generate_random_rotation(key: jax.Array, num_dims: int) -> jax.Array:

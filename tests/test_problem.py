@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from bbobax.functions import BBOB_PROBLEMS, Rastrigin, Sphere, suite
-from bbobax.noise import noiseless
+from bbobax.noise import Noiseless
 from bbobax.problem import BBOBProblem
 from bbobax.types import BBOBEval, BBOBParams
 
@@ -22,10 +22,13 @@ def test_problem_initialization():
     assert Rastrigin(num_dims=5).num_dims == 5
 
 
-def test_base_class_cannot_be_instantiated():
-    """BBOBProblem is the contract, not a problem: `_value` is abstract."""
-    with pytest.raises(TypeError):
-        BBOBProblem(num_dims=5)
+def test_base_class_supplies_no_function():
+    """BBOBProblem is the contract, not a problem: it defines no `_value`."""
+    problem = BBOBProblem(num_dims=5)
+    params = problem.sample(jax.random.key(0))
+
+    with pytest.raises(NotImplementedError, match="BBOBProblem"):
+        problem.evaluate(jax.random.key(1), problem.sample_x(jax.random.key(2)), params)
 
 
 def test_problem_initialization_rejects_bad_dimension():
@@ -175,9 +178,8 @@ def test_default_noise_is_noiseless():
     """The default problem is COCO's noiseless suite: evaluation is deterministic."""
     problem = Sphere(num_dims=5)
 
-    # Only the noiseless model is in the pool, and stabilization is off.
-    assert problem.noise_model.active_models == [noiseless]
-    assert problem.noise_model.use_stabilization is False
+    # The default model is Noiseless, held directly -- no pool, no switch.
+    assert isinstance(problem.noise, Noiseless)
 
     params = problem.sample(jax.random.key(0))
     x = problem.sample_x(jax.random.key(1))

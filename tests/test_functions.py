@@ -2,6 +2,7 @@
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
 from bbobax.functions import (
@@ -161,8 +162,8 @@ def test_problem_dimension_is_exact(num_dims):
 def test_ill_conditioned_schaffers_is_the_conditioning_alone():
     """f18 is f17 with the conditioning raised, and nothing else."""
     assert issubclass(SchaffersF7IllConditioned, SchaffersF7)
-    assert SchaffersF7.conditioning == 10.0
-    assert SchaffersF7IllConditioned.conditioning == 1000.0
+    assert SchaffersF7.condition == 10.0
+    assert SchaffersF7IllConditioned.condition == 1000.0
 
     # The math is written once: the subclass adds no _value of its own.
     assert "_value" not in vars(SchaffersF7IllConditioned)
@@ -177,12 +178,12 @@ def test_ill_conditioned_schaffers_is_the_conditioning_alone():
     assert float(f17._value(x, params)[0]) != float(f18._value(x, params)[0])
 
 
-def test_place_x_opt_is_the_default_unless_overridden():
-    """Exactly the six constrained functions override where the optimum may sit."""
+def test_sample_x_opt_is_the_default_unless_overridden():
+    """Exactly the six constrained functions draw their own optimum."""
     overriding = {
         name
         for name, problem_class in BBOB_PROBLEMS.items()
-        if "_place_x_opt" in vars(problem_class)
+        if "_sample_x_opt" in vars(problem_class)
     }
     assert overriding == {
         "bueche_rastrigin",
@@ -192,3 +193,33 @@ def test_place_x_opt_is_the_default_unless_overridden():
         "gallagher_21_hi",
         "lunacek",
     }
+
+
+@pytest.mark.parametrize("name", BBOB_PROBLEMS.keys())
+def test_sample_x_opt_lands_where_the_definition_allows(name):
+    """The drawn optimum is in the set its function admits, at every dimension."""
+    num_dims = 5
+    problem = BBOB_PROBLEMS[name](num_dims=num_dims)
+    keys = jax.random.split(jax.random.key(0), 32)
+    x_opt = np.asarray(jax.vmap(problem._sample_x_opt)(keys))
+
+    assert x_opt.shape == (32, num_dims)
+
+    # The three sign-only functions draw a lattice, not a continuous point:
+    # only the sign of each coordinate is an instance choice, so that is all
+    # `_sample_x_opt` draws -- and both signs do occur.
+    lattice = {"linear_slope": 5.0, "schwefel": 4.2096874633 / 2.0, "lunacek": 1.25}
+    if name in lattice:
+        assert set(np.unique(np.abs(x_opt))) == {lattice[name]}
+        assert np.any(x_opt > 0) and np.any(x_opt < 0)
+        return
+
+    # Everything else draws continuously, inside the range its definition allows.
+    bound = {"rosenbrock": 3.0, "gallagher_21_hi": 4.0 * 0.98}.get(name, 4.0)
+    assert np.all(np.abs(x_opt) <= bound + 1e-12)
+    assert len(np.unique(x_opt)) > 1
+
+    # Bueche-Rastrigin forces its skewed (0-based even) coordinates non-negative.
+    if name == "bueche_rastrigin":
+        assert np.all(x_opt[:, ::2] >= 0.0)
+        assert np.any(x_opt[:, 1::2] < 0.0)

@@ -1,26 +1,9 @@
 """Black-box Optimization Benchmarking Types."""
 
-from typing import Any, TypeAlias
+from typing import Any
 
 import jax
 from flax.struct import dataclass
-
-# A scalar that is a Python value when built by hand and a traced array when it
-# comes out of `sample`; both are valid everywhere it appears.
-IntScalar: TypeAlias = int | jax.Array
-
-
-@dataclass
-class NoiseParams:
-    """The noise model and its settings, drawn per instance."""
-
-    noise_id: jax.Array
-    gaussian_beta: jax.Array
-    uniform_alpha: jax.Array
-    uniform_beta: jax.Array
-    cauchy_alpha: jax.Array
-    cauchy_p: jax.Array
-    additive_std: jax.Array
 
 
 @dataclass
@@ -40,6 +23,9 @@ class BBOBParams:
       stores the post-constraint optimum.
     - `r` and `q` are the instance's rotation matrices, the R and Q of the
       function definitions.
+    - `noise_params` is whatever the problem's noise model's `sample` returns.
+      A plugged-in component owns its own parameter type -- the same rule
+      `QDParams.descriptor` follows for descriptors.
     """
 
     key: jax.Array
@@ -47,7 +33,7 @@ class BBOBParams:
     f_opt: jax.Array
     r: jax.Array
     q: jax.Array
-    noise_params: NoiseParams
+    noise_params: Any
 
 
 @dataclass
@@ -62,13 +48,18 @@ class QDParams:
     """One sampled instance of a Quality-Diversity problem.
 
     Composed, not inherited: a QD problem is a problem paired with a
-    descriptor, and each half draws its own instance data. `descriptor_params`
-    is whatever that descriptor's `sample` returns -- a projection matrix for
-    `RandomProjection`, something else for a descriptor that needs more.
+    descriptor, and each half draws its own instance data. The two fields are
+    named for the two halves of `QDProblem`, so the parameters read the same
+    way the object does.
+
+    - `problem` is the function's instance, a `BBOBParams`.
+    - `descriptor` is whatever that descriptor's `sample` returns -- a
+      projection matrix for `RandomProjection`, something else for a descriptor
+      that needs more.
     """
 
-    problem_params: BBOBParams
-    descriptor_params: Any
+    problem: BBOBParams
+    descriptor: Any
 
 
 @dataclass
