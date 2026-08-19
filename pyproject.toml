@@ -57,7 +57,10 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 src = ["src", "tests"]
-target-version = "py314"
+# The oldest Python we support: ruff modernizes only as far as this, so it
+# cannot suggest syntax that breaks a 3.11 user. The dev environment runs on
+# 3.14 (see .python-version) -- the tools run new, they validate old.
+target-version = "py311"
 # Vendored official BBOB implementation (test ground truth): never lint or
 # reformat it. Top-level exclude covers both `ruff check` and `ruff format`.
 extend-exclude = ["tests/_official/bbobbenchmarks.py"]

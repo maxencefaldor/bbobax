@@ -69,16 +69,16 @@ class NoiseModel:
             use_stabilization: Whether to use noise stabilization.
 
         """
-        unknown = set(noise_model_names) - set(all_noise_models)
+        unknown = set(noise_model_names) - set(noise_models)
         if unknown:
             raise ValueError(
                 f"unknown noise models {sorted(unknown)}; "
-                f"available: {sorted(all_noise_models)}"
+                f"available: {sorted(noise_models)}"
             )
 
         # Collect active noise models
         self.noise_ids, self.noise_models, counter = [], [], 0
-        for noise_model_name, noise_model in all_noise_models.items():
+        for noise_model_name, noise_model in noise_models.items():
             if noise_model_name in noise_model_names:
                 self.noise_ids.append(counter)
                 self.noise_models.append(noise_model)
@@ -253,7 +253,7 @@ def additive_noise(
     )
 
 
-all_noise_models = {
+noise_models = {
     "noiseless": noiseless_noise,
     "gaussian": gaussian_noise,
     "uniform": uniform_noise,

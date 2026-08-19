@@ -35,9 +35,12 @@ def test_bbob_workflow():
     assert params.num_dims <= task.max_num_dims
 
     # Initialize state
-    state = task.init(key_init, params)
+    state = task.init(params)
     assert isinstance(state, BBOBState)
-    assert state.r.shape == (task.max_num_dims, task.max_num_dims)
+    assert int(state.counter) == 0
+    # Rotations are instance parameters, not state: drawn once by sample().
+    assert params.r.shape == (task.max_num_dims, task.max_num_dims)
+    assert params.q.shape == (task.max_num_dims, task.max_num_dims)
 
     # Sample solution
     x = task.sample_x(key_eval)
@@ -70,7 +73,7 @@ def test_qdbbob_workflow():
     assert params.descriptor_params.shape == (descriptor_size, task.max_num_dims)
 
     # Init
-    state = task.init(key, params)
+    state = task.init(params)
 
     # Evaluate
     x = task.sample_x(key)
@@ -85,7 +88,7 @@ def test_task_jit_vmap():
     task = BBOB.create_default(max_num_dims=5)
     key = jax.random.key(0)
     params = task.sample(key)
-    state = task.init(key, params)
+    state = task.init(params)
 
     # JIT evaluate
     # Note: we usually JIT the method bound to the instance or a wrapper

@@ -20,7 +20,7 @@ def test_bbob_optimization_loop():
     # Sample task instance
     key_sample, key_loop = jax.random.split(key)
     params = task.sample(key_sample)
-    state = task.init(key_sample, params)
+    state = task.init(params)
 
     # Optimization loop
     current_best_fitness = -jnp.inf
@@ -87,7 +87,7 @@ def test_qdbbob_optimization_loop():
     # Sample task instance
     key_sample, key_loop = jax.random.split(key)
     params = task.sample(key_sample)
-    state = task.init(key_sample, params)
+    state = task.init(params)
 
     def batch_evaluate(k, x, s, p):
         return task.evaluate(k, x, s, p)

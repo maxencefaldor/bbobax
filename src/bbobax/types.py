@@ -26,17 +26,25 @@ DescriptorFn: TypeAlias = Callable[[jax.Array, "BBOBState", "QDBBOBParams"], jax
 class BBOBParams:
     """BBOB task parameters.
 
-    ``x_opt`` is the function's true argmin: per-function conventions (sign
-    vectors, scalings, sign-forcing) are applied at sampling time, mirroring
-    how COCO stores the post-convention optimum. ``key`` is the instance's own
-    PRNG key, fixed at sampling, for instance structure beyond x_opt -- the
-    Gallagher functions draw their peak layouts from it.
+    Everything that defines the instance lives here, drawn once by
+    ``BBOB.sample`` and never mutated:
+
+    - ``x_opt`` is the function's true argmin. The per-function conventions
+      (sign vectors, scalings, sign-forcing) are applied at sampling time,
+      mirroring how COCO stores the post-convention optimum.
+    - ``r`` and ``q`` are the instance's rotation matrices, the R and Q of the
+      function definitions.
+    - ``key`` is the instance's own PRNG key, for instance structure that is
+      cheaper to derive than to store -- the Gallagher functions draw their
+      peak layouts from it.
     """
 
     fn_id: jax.Array
     num_dims: jax.Array
     x_opt: jax.Array
     f_opt: jax.Array
+    r: jax.Array
+    q: jax.Array
     key: jax.Array
     noise_params: NoiseParams
 
@@ -51,11 +59,14 @@ class QDBBOBParams(BBOBParams):
 
 @dataclass
 class BBOBState:
-    """BBOB task state."""
+    """BBOB task state: what changes as an instance is evaluated.
 
-    r: jax.Array
-    q: jax.Array
-    counter: int = 0
+    Only the evaluation counter. The rotation matrices used to live here, but
+    they are drawn once per instance and never mutated, which makes them
+    parameters -- see ``BBOBParams``.
+    """
+
+    counter: IntScalar = 0
 
 
 @dataclass

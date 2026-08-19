@@ -18,7 +18,7 @@ def test_random_projection_descriptor_shape(mock_qdbbob_params):
 
     # Create inputs
     x = jnp.ones(max_dims)
-    state = BBOBState(r=jnp.eye(max_dims), q=jnp.eye(max_dims))
+    state = BBOBState()
     params = mock_qdbbob_params(num_dims, max_dims, descriptor_size)
 
     # Evaluate
@@ -36,7 +36,7 @@ def test_random_projection_descriptor_jit_vmap(mock_qdbbob_params):
 
     descriptor_fn = get_random_projection_descriptor()
 
-    state = BBOBState(r=jnp.eye(max_dims), q=jnp.eye(max_dims))
+    state = BBOBState()
     params = mock_qdbbob_params(num_dims, max_dims, descriptor_size)
 
     # Test JIT

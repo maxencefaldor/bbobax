@@ -207,15 +207,12 @@ def _make_params_state(D, x_opt, f_opt, r, q, key=None):
         num_dims=jnp.array(D),
         x_opt=jnp.asarray(x_opt, dtype=jnp.float64),
         f_opt=jnp.array(float(f_opt)),
+        r=jnp.asarray(r, dtype=jnp.float64),
+        q=jnp.asarray(q, dtype=jnp.float64),
         key=key if key is not None else jax.random.key(0),
         noise_params=None,
     )
-    state = BBOBState(
-        r=jnp.asarray(r, dtype=jnp.float64),
-        q=jnp.asarray(q, dtype=jnp.float64),
-        counter=0,
-    )
-    return params, state
+    return params, BBOBState(counter=0)
 
 
 def _test_points(rng, D, x_opt):

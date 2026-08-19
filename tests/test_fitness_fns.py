@@ -5,37 +5,26 @@ import jax.numpy as jnp
 import pytest
 
 from bbobax.fitness_fns import (
+    _lambda_alpha_vector,
     bbob_fns,
     f_pen,
-    lambda_alpha,
     transform_asy,
     transform_osz,
 )
 
 
-def test_lambda_alpha():
-    """Test lambda_alpha helper function."""
-    max_dims = 5
-    num_dims = 3
-    alpha = 10.0
+def test_lambda_alpha_vector():
+    """The conditioning vector: masked, and 10**(0.5 i/(D-1)) where active."""
+    max_dims, num_dims, alpha = 5, 3, 10.0
 
-    # Test output shape
-    res = lambda_alpha(alpha, max_dims, num_dims)
-    assert res.shape == (max_dims, max_dims)
+    res = _lambda_alpha_vector(alpha, max_dims, num_dims)
+    assert res.shape == (max_dims,)
 
-    # Test diagonal property
-    assert jnp.allclose(res, jnp.diag(jnp.diag(res)))
-
-    # Test masking (elements beyond num_dims should be alpha^0.5 = 3.162...)
-    # Wait, the implementation sets exp to 0.5 * mask, so masked elements
-    # get exp=0 -> 1.0?
-    # Let's check the code: exp = ... * mask. If mask is False (0), exp is 0.
-    # alpha^0 = 1.
-    # The code says: exp = (jnp.where(...) * mask).
-    # So for masked dimensions, exp should be 0, so value should be 1.
-
-    diag = jnp.diag(res)
-    assert jnp.all(diag[num_dims:] == 1.0)
+    # Active coordinates carry the conditioning ramp; masked ones sit at
+    # exponent 0, i.e. 1.0, so they cannot scale a padded coordinate.
+    expected = alpha ** (0.5 * jnp.arange(max_dims) / (num_dims - 1))
+    assert jnp.allclose(res[:num_dims], expected[:num_dims])
+    assert jnp.allclose(res[num_dims:], 1.0)
 
 
 def test_transform_osz():

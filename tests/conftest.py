@@ -32,11 +32,7 @@ def mock_state():
     """Create a mock BBOB state factory."""
 
     def _get_mock_state(max_num_dims: int) -> BBOBState:
-        return BBOBState(
-            counter=0,
-            r=jnp.eye(max_num_dims),
-            q=jnp.eye(max_num_dims),
-        )
+        return BBOBState(counter=0)
 
     return _get_mock_state
 
@@ -51,6 +47,8 @@ def mock_params():
             num_dims=jnp.array(num_dims),
             x_opt=jnp.zeros(max_num_dims),
             f_opt=jnp.array(0.0),
+            r=jnp.eye(max_num_dims),
+            q=jnp.eye(max_num_dims),
             key=jax.random.key(0),
             noise_params=zero_noise_params(),
         )
@@ -74,6 +72,8 @@ def mock_qdbbob_params():
             num_dims=jnp.array(num_dims),
             x_opt=jnp.zeros(max_num_dims),
             f_opt=jnp.array(0.0),
+            r=jnp.eye(max_num_dims),
+            q=jnp.eye(max_num_dims),
             key=jax.random.key(0),
             noise_params=zero_noise_params(),
             descriptor_params=descriptor_params,

@@ -11,7 +11,7 @@ Two conventions to know:
 - Functions receive fully prepared ``params``: ``params.x_opt`` is the true
   argmin of every function. The per-function x_opt conventions of the official
   suite (sign vectors, scalings, component sign-forcing) are applied at sampling
-  time via ``X_OPT_CONVENTIONS``, mirroring how COCO stores the post-convention
+  time via ``x_opt_conventions``, mirroring how COCO stores the post-convention
   optimum. Hand-built params should apply the matching convention first.
 - Functions return ``(value, penalty)`` with the optimum at value 0; ``f_opt``
   is added by ``BBOB.evaluate``, and noise applies to the value only.
@@ -43,11 +43,6 @@ def _lambda_alpha_vector(
         * mask
     )
     return jnp.power(alpha, exp)
-
-
-def lambda_alpha(alpha: float, max_num_dims: int, num_dims: IntScalar) -> jax.Array:
-    """Masked lambda alpha matrix."""
-    return jnp.diag(_lambda_alpha_vector(alpha, max_num_dims, num_dims))
 
 
 def transform_osz(element: jax.Array) -> jax.Array:
@@ -202,7 +197,7 @@ def linear_slope(
     mask = jnp.arange(max_num_dims) < params.num_dims
 
     # params.x_opt is the true optimum: +-5 per coordinate, applied by the
-    # sampling convention (see X_OPT_CONVENTIONS).
+    # sampling convention (see x_opt_conventions).
     x_opt = params.x_opt
 
     z = jnp.where(x * x_opt < 25.0, x, x_opt)
@@ -226,9 +221,9 @@ def attractive_sector(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
     z = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z
-    z = state.q @ z
+    z = params.q @ z
 
     s = jnp.where(z * params.x_opt > 0.0, 100.0, 1.0)
 
@@ -243,7 +238,7 @@ def step_ellipsoidal(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    z_hat = state.r @ (x - params.x_opt)
+    z_hat = params.r @ (x - params.x_opt)
     z_hat = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z_hat
 
     # floor(0.5 + z) is round-half-up, matching COCO's C (`coco_double_round`).
@@ -256,7 +251,7 @@ def step_ellipsoidal(
         jnp.floor(0.5 + 10.0 * z_hat) / 10.0,
     )
 
-    z = state.q @ z_tilde
+    z = params.q @ z_tilde
 
     exp = (
         jnp.where(
@@ -308,7 +303,7 @@ def rosenbrock_rotated(
     # params.x_opt is the argmin like everywhere else.
     z = (
         jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0)
-        * (state.r @ (x - params.x_opt))
+        * (params.r @ (x - params.x_opt))
         + 1.0
     )
     z_i = z[:-1]
@@ -325,7 +320,7 @@ def ellipsoidal_rotated(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
     z = transform_osz(z)
 
     exp = (
@@ -347,7 +342,7 @@ def discus(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
     z = transform_osz(z)
 
     z_squared = jnp.square(z)
@@ -362,9 +357,9 @@ def bent_cigar(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
     z = transform_asy(z, 0.5, params.num_dims)
-    z = state.r @ z
+    z = params.r @ z
 
     z_squared = jnp.square(z)
     out = z_squared.at[1:].multiply(10**6)
@@ -378,9 +373,9 @@ def sharp_ridge(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims - 1) < (params.num_dims - 1)
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
     z = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z
-    z = state.q @ z
+    z = params.q @ z
 
     z_squared = jnp.square(z)
     return z_squared[0] + 100 * jnp.sqrt(jnp.sum(z_squared[1:] * mask)), jnp.array(0.0)
@@ -393,7 +388,7 @@ def different_powers(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
 
     exp = (
         jnp.where(
@@ -414,11 +409,11 @@ def rastrigin_rotated(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
     z = transform_asy(transform_osz(z), 0.2, params.num_dims)
-    z = state.q @ z
+    z = params.q @ z
     z = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z
-    z = state.r @ z
+    z = params.r @ z
 
     out_1 = jnp.cos(2 * jnp.pi * z)
     out_2 = jnp.square(z)
@@ -434,11 +429,11 @@ def weierstrass(
     max_num_dims = x.shape[0]
     mask = jnp.arange(max_num_dims) < params.num_dims
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
     z = transform_osz(z)
-    z = state.q @ z
+    z = params.q @ z
     z = _lambda_alpha_vector(0.01, max_num_dims, params.num_dims) * z
-    z = state.r @ z
+    z = params.r @ z
 
     out = jnp.sum(
         _WEIERSTRASS_HALF_POW_K
@@ -460,9 +455,9 @@ def schaffers_f7(
     if max_num_dims == 1:
         return jnp.array(0.0), jnp.array(0.0)
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
     z = transform_asy(z, 0.5, params.num_dims)
-    z = state.q @ z
+    z = params.q @ z
     z = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z
 
     z_i = z[:-1]
@@ -485,9 +480,9 @@ def schaffers_f7_ill_conditioned(
     if max_num_dims == 1:
         return jnp.array(0.0), jnp.array(0.0)
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
     z = transform_asy(z, 0.5, params.num_dims)
-    z = state.q @ z
+    z = params.q @ z
     z = _lambda_alpha_vector(1000.0, max_num_dims, params.num_dims) * z
 
     z_i = z[:-1]
@@ -513,7 +508,7 @@ def griewank_rosenbrock(
     # params.x_opt the argmin.
     z = (
         jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0)
-        * (state.r @ (x - params.x_opt))
+        * (params.r @ (x - params.x_opt))
         + 1.0
     )
     z_i = z[:-1]
@@ -617,7 +612,7 @@ def gallagher_101_me(
     # (x - y_i)^T R^T C_i R (x - y_i) = z^T C_i z with z = R(x - y_i), and C_i
     # diagonal makes that sum(c_i * z**2). All peaks at once: one (num_optima, D)
     # by (D, D) matmul instead of three matrix-vector products per peak.
-    z = (x - y) @ state.r.T
+    z = (x - y) @ params.r.T
     out = jnp.sum(c * jnp.square(z) * mask, axis=-1)
     out = w * jnp.exp(-out / (2 * params.num_dims))
     return jnp.square(transform_osz(10.0 - jnp.max(out))), f_pen(x, params.num_dims)
@@ -686,7 +681,7 @@ def gallagher_21_hi(
     # (x - y_i)^T R^T C_i R (x - y_i) = z^T C_i z with z = R(x - y_i), and C_i
     # diagonal makes that sum(c_i * z**2). All peaks at once: one (num_optima, D)
     # by (D, D) matmul instead of three matrix-vector products per peak.
-    z = (x - y) @ state.r.T
+    z = (x - y) @ params.r.T
     out = jnp.sum(c * jnp.square(z) * mask, axis=-1)
     out = w * jnp.exp(-out / (2 * params.num_dims))
     return jnp.square(transform_osz(10.0 - jnp.max(out))), f_pen(x, params.num_dims)
@@ -705,9 +700,9 @@ def katsuura(
     # float64 all 32 terms are needed for exactness (J=30 costs ~1e-7 absolute).
     num_terms = 32
 
-    z = state.r @ (x - params.x_opt)
+    z = params.r @ (x - params.x_opt)
     z = _lambda_alpha_vector(100.0, max_num_dims, params.num_dims) * z
-    z = state.q @ z
+    z = params.q @ z
 
     two_pow_j = jnp.power(2.0, jnp.arange(1, num_terms + 1))
     sum_term = jnp.sum(
@@ -737,9 +732,9 @@ def lunacek(
     x_opt = params.x_opt
     x_hat = 2.0 * jnp.sign(x_opt) * x
 
-    z = state.r @ (x_hat - mu_0)
+    z = params.r @ (x_hat - mu_0)
     z = _lambda_alpha_vector(100.0, max_num_dims, params.num_dims) * z
-    z = state.q @ z
+    z = params.q @ z
 
     s_1 = jnp.sum(jnp.square(x_hat - mu_0) * mask)
     s_2 = jnp.sum(jnp.square(x_hat - mu_1) * mask)
@@ -789,7 +784,7 @@ def _x_opt_lunacek(x_opt: jax.Array) -> jax.Array:
 # ``BBOB.sample`` so that ``params.x_opt`` is always the function's true argmin
 # -- the invariant COCO keeps by storing the post-convention optimum. Functions
 # absent from this mapping use the draw unchanged.
-X_OPT_CONVENTIONS: dict[str, Callable[[jax.Array], jax.Array]] = {
+x_opt_conventions: dict[str, Callable[[jax.Array], jax.Array]] = {
     "bueche_rastrigin": _x_opt_bueche_rastrigin,
     "linear_slope": _x_opt_linear_slope,
     "rosenbrock": _x_opt_rosenbrock,

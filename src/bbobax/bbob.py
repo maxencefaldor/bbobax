@@ -3,7 +3,7 @@
 import jax
 import jax.numpy as jnp
 
-from .fitness_fns import X_OPT_CONVENTIONS, bbob_fns
+from .fitness_fns import bbob_fns, x_opt_conventions
 from .noise import NoiseModel
 from .types import (
     BBOBEval,
@@ -69,7 +69,7 @@ class BBOB:
         # convention exists, and everywhere for unnamed function lists).
         if self.fitness_fn_names is not None:
             self._x_opt_conventions = [
-                X_OPT_CONVENTIONS.get(name, lambda x_opt: x_opt)
+                x_opt_conventions.get(name, lambda x_opt: x_opt)
                 for name in self.fitness_fn_names
             ]
         else:
@@ -99,10 +99,19 @@ class BBOB:
 
         The raw uniform x_opt draw is reshaped by the sampled function's
         convention (sign vectors, scalings, sign-forcing -- see
-        ``X_OPT_CONVENTIONS``), so ``params.x_opt`` is the true argmin, the
+        ``x_opt_conventions``), so ``params.x_opt`` is the true argmin, the
         same invariant COCO keeps by storing the post-convention optimum.
         """
-        key_fn, key_d, key_x, key_f, key_noise, key_instance = jax.random.split(key, 6)
+        (
+            key_fn,
+            key_d,
+            key_x,
+            key_f,
+            key_r,
+            key_q,
+            key_noise,
+            key_instance,
+        ) = jax.random.split(key, 8)
 
         fn_id = jax.random.randint(key_fn, (), minval=0, maxval=self.num_fns)
         # randint's maxval is exclusive; both bounds here are inclusive.
@@ -123,30 +132,34 @@ class BBOB:
             maxval=self.f_opt_range[1],
         )
 
+        # Rotation matrices: instance data like x_opt, drawn once and never
+        # mutated. BBOB always rotates; with sample_rotation off both are the
+        # identity and every rotated variant collapses onto its base function.
+        if self.sample_rotation:
+            r = self.generate_random_rotation(key_r, self.max_num_dims, num_dims)
+            q = self.generate_random_rotation(key_q, self.max_num_dims, num_dims)
+        else:
+            r = jnp.eye(self.max_num_dims)
+            q = jnp.eye(self.max_num_dims)
+
         # Sample noise model parameters
         noise_params = self.noise_model.sample(key_noise, num_dims)
 
-        return BBOBParams(fn_id, num_dims, x_opt, f_opt, key_instance, noise_params)
+        return BBOBParams(
+            fn_id, num_dims, x_opt, f_opt, r, q, key_instance, noise_params
+        )
 
-    def init(self, key: jax.Array, params: BBOBParams) -> BBOBState:
-        """Initialize the task state.
+    def init(self, params: BBOBParams) -> BBOBState:
+        """Initialize the task state for an instance.
 
         Args:
-            key: JAX random key.
             params: Task parameters.
 
         Returns:
             Initial task state.
 
         """
-        if self.sample_rotation:
-            key_r, key_q = jax.random.split(key)
-            r = self.generate_random_rotation(key_r, self.max_num_dims, params.num_dims)
-            q = self.generate_random_rotation(key_q, self.max_num_dims, params.num_dims)
-        else:
-            r = jnp.eye(self.max_num_dims)
-            q = jnp.eye(self.max_num_dims)
-        return BBOBState(counter=0, r=r, q=q)
+        return BBOBState(counter=0)
 
     def evaluate(
         self,
@@ -292,6 +305,8 @@ class QDBBOB(BBOB):
             num_dims=base_params.num_dims,
             x_opt=base_params.x_opt,
             f_opt=base_params.f_opt,
+            r=base_params.r,
+            q=base_params.q,
             key=base_params.key,
             noise_params=base_params.noise_params,
             descriptor_params=descriptor_params,
