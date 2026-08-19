@@ -29,6 +29,7 @@ from .functions import (
     Weierstrass,
     suite,
 )
+from .many_affine import ManyAffine
 from .noise import (
     NOISE_MODELS,
     Additive,
@@ -73,6 +74,8 @@ __all__ = [
     "Gallagher21Hi",
     "Katsuura",
     "Lunacek",
+    # Built from the 24, rather than one of them
+    "ManyAffine",
     # Quality-Diversity, composed onto a problem
     "QDProblem",
     "Descriptor",

@@ -53,6 +53,7 @@ nav:
   - API Reference:
       - Problem: reference/problem.md
       - Functions: reference/functions.md
+      - Many-Affine BBOB: reference/many_affine.md
       - Quality-Diversity: reference/qd.md
       - Noise Models: reference/noise.md
   - License: license.md

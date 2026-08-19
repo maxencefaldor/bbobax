@@ -17,6 +17,7 @@ A high-performance reimplementation of the [COCO](https://coco-platform.org/) (C
 *   **Standard BBOB**: Includes standard single-objective BBOB functions (noiseless).
 *   **Noise Support**: Gaussian, uniform and Cauchy noise models, verified against the official formulas.
 *   **Quality-Diversity (QD)**: Any of the 24 functions composes with any descriptor.
+*   **Many-Affine BBOB**: `ManyAffine` combines all 24 under a sparse weight vector, turning the suite into a continuous space of problems.
 *   **Flexible API**: Easy integration with existing JAX-based evolutionary computation libraries (e.g., EvoJAX, evosax).
 
 ## Fidelity to official BBOB
