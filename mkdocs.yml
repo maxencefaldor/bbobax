@@ -53,8 +53,9 @@ nav:
       - Quality-Diversity: notebooks/05_qd.ipynb
   - API Reference:
       - Problem: reference/problem.md
-      - Functions: reference/functions.md
-      - Noisy suite: reference/noisy.md
+      - Transforms: reference/transforms.md
+      - bbob: reference/bbob.md
+      - bbob-noisy: reference/bbob_noisy.md
       - Many-Affine BBOB: reference/many_affine.md
       - Quality-Diversity: reference/qd.md
       - Noise Models: reference/noise.md
@@ -71,4 +72,3 @@ markdown_extensions:
   - pymdownx.details
   - attr_list
   - md_in_html
-
