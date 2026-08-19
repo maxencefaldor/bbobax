@@ -30,10 +30,12 @@ official code disagree, the code wins, with a comment at the site.
 
 Guarantees you can rely on:
 
-*   `params.x_opt` is always the function's **true argmin** — the per-function
-    x_opt conventions of the official suite (sign vectors, scalings,
-    sign-forcing) are applied at sampling time, exactly as COCO stores the
-    post-convention optimum. `f(params.x_opt) = f_opt` for all 24 functions.
+*   `params.x_opt` is always the function's **true argmin**, so
+    `f(params.x_opt) = f_opt` for all 24. Six functions constrain where their
+    optimum may sit — a linear function is minimized on a corner, not inside
+    the box — and each carries that constraint with it in `BBOB_FNS`, applied
+    when the instance is drawn, exactly as COCO stores the post-constraint
+    optimum.
 *   Noise applies to the raw function value only; the boundary penalty and
     `f_opt` are added outside it, as the paper prescribes.
 *   The default `BBOB()` is the plain **noiseless** suite with rotations on —

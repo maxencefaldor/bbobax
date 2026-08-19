@@ -41,9 +41,16 @@ And three in the noise models, against the noisy-functions paper:
   range never resized the search space -- solutions stayed `max_num_dims` long
   and the extra coordinates were inert -- so it was never COCO's D-dimensional
   problem. `num_dims < 2` now raises.
-- `params.x_opt` is always the function's true argmin: the per-function
-  conventions (sign vectors, scalings, sign-forcing) are applied at sampling
-  time, as COCO stores the post-convention optimum.
+- `params.x_opt` is always the function's true argmin. Six of the 24 constrain
+  where their optimum may sit -- `linear_slope` is linear, so its minimum is
+  always a corner of the box; `schwefel` and `lunacek` are built around fixed
+  constants; `rosenbrock` and `gallagher_21_hi` are scaled; `bueche_rastrigin`
+  forces its skewed coordinates non-negative. `BBOB_FNS` now maps a name to a
+  `BBOBFunction` bundling the function with that constraint, so per-function
+  knowledge lives in one entry and the default ("anywhere in the box") is
+  written out rather than implied by absence from a second table.
+- The PRNG key comes first everywhere -- in every signature, as `jax.random`
+  has it, and now in `BBOBParams` too, since everything else is drawn from it.
 - Rotations moved from `BBOBState` to `BBOBParams` -- they are instance data,
   drawn once and never mutated -- so `init(params)` takes no key and cannot
   silently redraw the instance. `BBOBState` carries the evaluation counter.

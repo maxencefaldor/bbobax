@@ -52,11 +52,11 @@ class BBOBParams:
       peak layouts from it.
     """
 
+    key: jax.Array
     x_opt: jax.Array
     f_opt: jax.Array
     r: jax.Array
     q: jax.Array
-    key: jax.Array
     noise_params: NoiseParams
 
 

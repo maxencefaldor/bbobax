@@ -18,6 +18,7 @@ Two conventions to know:
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
@@ -567,81 +568,111 @@ def lunacek(
     ), 10.0**4 * f_pen(x)
 
 
-def _x_opt_bueche_rastrigin(x_opt: jax.Array) -> jax.Array:
-    # The officials force the skewed (0-based even) coordinates non-negative
-    # (f_bueche_rastrigin.c:81-84, "in the legacy code but _not_ in the function
-    # description"; bbobbenchmarks xopt[::2] = abs(...)). The paper omits it;
-    # the code defines the real instances, so the code wins.
+# --- Where each function's optimum may sit -------------------------------------
+#
+# Most functions accept an optimum anywhere in the box, so the raw uniform draw
+# is used unchanged. Six do not: their definition constrains the optimum, and
+# these map a draw into the admissible set. `linear_slope` is the clearest case
+# -- a linear function on a box has no interior minimum, so its optimum is
+# always a corner and only the *sign* of the draw survives.
+
+
+def anywhere(x_opt: jax.Array) -> jax.Array:
+    """Use the draw unchanged: the optimum may sit anywhere in the box."""
+    return x_opt
+
+
+def _on_the_corner(x_opt: jax.Array) -> jax.Array:
+    """Put the optimum on a corner: a linear function has no interior minimum."""
+    return jnp.where(x_opt > 0.0, 5.0, -5.0)
+
+
+def _skewed_half_non_negative(x_opt: jax.Array) -> jax.Array:
+    """Force the skewed (0-based even) coordinates non-negative.
+
+    Both official implementations do this (`f_bueche_rastrigin.c:81-84`, whose
+    comment notes it is "in the legacy code but _not_ in the function
+    description"; `bbobbenchmarks` applies `xopt[::2] = abs(...)`). The paper
+    omits it; the code defines the instances every published result ran on, so
+    the code wins.
+    """
     is_even = jnp.arange(x_opt.shape[0]) % 2 == 0
     return jnp.where(is_even, jnp.abs(x_opt), x_opt)
 
 
-def _x_opt_linear_slope(x_opt: jax.Array) -> jax.Array:
-    # The optimum sits on the +-5 corner selected by the sign of the draw.
-    return jnp.where(x_opt > 0.0, 5.0, -5.0)
-
-
-def _x_opt_rosenbrock(x_opt: jax.Array) -> jax.Array:
-    # Optimum in [-3, 3]^D (paper 2.8); COCO stores the scaled vector too.
+def _scaled_to_three(x_opt: jax.Array) -> jax.Array:
+    """Rosenbrock's optimum lies in [-3, 3]^D (paper 2.8), not [-4, 4]^D."""
     return 0.75 * x_opt
 
 
-def _x_opt_schwefel(x_opt: jax.Array) -> jax.Array:
+def _schwefel_lattice(x_opt: jax.Array) -> jax.Array:
+    """Schwefel is built around 4.2096874633; its optimum is pinned to +-half."""
     return jnp.where(x_opt > 0.0, 4.2096874633 / 2.0, -4.2096874633 / 2.0)
 
 
-def _x_opt_gallagher_21_hi(x_opt: jax.Array) -> jax.Array:
-    # y_1 in [-3.92, 3.92]^D (paper 5.22; bbobbenchmarks fac = 0.98).
-    return 0.98 * x_opt
-
-
-def _x_opt_lunacek(x_opt: jax.Array) -> jax.Array:
+def _lunacek_lattice(x_opt: jax.Array) -> jax.Array:
+    """Lunacek is built around mu_0 = 2.5; its optimum is pinned to +-mu_0/2."""
     return jnp.where(x_opt > 0.0, 2.5 / 2.0, -2.5 / 2.0)
 
 
-# Per-function preparation of a raw uniform x_opt draw, applied by
-# `BBOB.sample` so that `params.x_opt` is always the function's true argmin
-# -- the invariant COCO keeps by storing the post-convention optimum. Functions
-# absent from this mapping use the draw unchanged.
-X_OPT_CONVENTIONS: dict[str, Callable[[jax.Array], jax.Array]] = {
-    "bueche_rastrigin": _x_opt_bueche_rastrigin,
-    "linear_slope": _x_opt_linear_slope,
-    "rosenbrock": _x_opt_rosenbrock,
-    "schwefel": _x_opt_schwefel,
-    "gallagher_21_hi": _x_opt_gallagher_21_hi,
-    "lunacek": _x_opt_lunacek,
-}
+def _scaled_to_gallagher_peak(x_opt: jax.Array) -> jax.Array:
+    """Scale to the 21-hi global peak's range, [-3.92, 3.92]^D (paper 5.22)."""
+    return 0.98 * x_opt
+
+
+@dataclass(frozen=True)
+class BBOBFunction:
+    """A BBOB function together with everything instance generation needs.
+
+    Bundled rather than kept in parallel registries so that adding a function
+    is one entry, and so the question "where may this one's optimum sit?" is
+    asked where the function is registered -- the default is written out, not
+    implied by absence from a second table.
+
+    Args:
+        name: The function's name, which is its key in ``BBOB_FNS``.
+        fitness_fn: The function itself.
+        place_x_opt: Maps a raw uniform draw into the optimum positions this
+            function admits. Defaults to ``anywhere``.
+
+    """
+
+    name: str
+    fitness_fn: FitnessFn
+    place_x_opt: Callable[[jax.Array], jax.Array] = anywhere
 
 
 # The 24 standard BBOB functions, in canonical f1-f24 order.
-BBOB_FNS: dict[str, FitnessFn] = {
+_FUNCTIONS = (
     # Part 1: Separable functions
-    "sphere": sphere,
-    "ellipsoidal": ellipsoidal,
-    "rastrigin": rastrigin,
-    "bueche_rastrigin": bueche_rastrigin,
-    "linear_slope": linear_slope,
+    BBOBFunction("sphere", sphere),
+    BBOBFunction("ellipsoidal", ellipsoidal),
+    BBOBFunction("rastrigin", rastrigin),
+    BBOBFunction("bueche_rastrigin", bueche_rastrigin, _skewed_half_non_negative),
+    BBOBFunction("linear_slope", linear_slope, _on_the_corner),
     # Part 2: Functions with low or moderate conditions
-    "attractive_sector": attractive_sector,
-    "step_ellipsoidal": step_ellipsoidal,
-    "rosenbrock": rosenbrock,
-    "rosenbrock_rotated": rosenbrock_rotated,
+    BBOBFunction("attractive_sector", attractive_sector),
+    BBOBFunction("step_ellipsoidal", step_ellipsoidal),
+    BBOBFunction("rosenbrock", rosenbrock, _scaled_to_three),
+    BBOBFunction("rosenbrock_rotated", rosenbrock_rotated),
     # Part 3: Functions with high conditioning and unimodal
-    "ellipsoidal_rotated": ellipsoidal_rotated,
-    "discus": discus,
-    "bent_cigar": bent_cigar,
-    "sharp_ridge": sharp_ridge,
-    "different_powers": different_powers,
+    BBOBFunction("ellipsoidal_rotated", ellipsoidal_rotated),
+    BBOBFunction("discus", discus),
+    BBOBFunction("bent_cigar", bent_cigar),
+    BBOBFunction("sharp_ridge", sharp_ridge),
+    BBOBFunction("different_powers", different_powers),
     # Part 4: Multi-modal functions with adequate global structure
-    "rastrigin_rotated": rastrigin_rotated,
-    "weierstrass": weierstrass,
-    "schaffers_f7": schaffers_f7,
-    "schaffers_f7_ill_conditioned": schaffers_f7_ill_conditioned,
-    "griewank_rosenbrock": griewank_rosenbrock,
+    BBOBFunction("rastrigin_rotated", rastrigin_rotated),
+    BBOBFunction("weierstrass", weierstrass),
+    BBOBFunction("schaffers_f7", schaffers_f7),
+    BBOBFunction("schaffers_f7_ill_conditioned", schaffers_f7_ill_conditioned),
+    BBOBFunction("griewank_rosenbrock", griewank_rosenbrock),
     # Part 5: Multi-modal functions with weak global structure
-    "schwefel": schwefel,
-    "gallagher_101_me": gallagher_101_me,
-    "gallagher_21_hi": gallagher_21_hi,
-    "katsuura": katsuura,
-    "lunacek": lunacek,
-}
+    BBOBFunction("schwefel", schwefel, _schwefel_lattice),
+    BBOBFunction("gallagher_101_me", gallagher_101_me),
+    BBOBFunction("gallagher_21_hi", gallagher_21_hi, _scaled_to_gallagher_peak),
+    BBOBFunction("katsuura", katsuura),
+    BBOBFunction("lunacek", lunacek, _lunacek_lattice),
+)
+
+BBOB_FNS: dict[str, BBOBFunction] = {function.name: function for function in _FUNCTIONS}

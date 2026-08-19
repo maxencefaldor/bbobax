@@ -5,7 +5,7 @@ import dataclasses
 import jax
 import jax.numpy as jnp
 
-from .fitness_fns import BBOB_FNS, X_OPT_CONVENTIONS
+from .fitness_fns import BBOB_FNS, anywhere
 from .noise import NoiseModel
 from .types import (
     BBOBEval,
@@ -47,9 +47,10 @@ class BBOB:
 
         Args:
             fitness_fn: The name of a standard BBOB function (a key of
-                `BBOB_FNS`), or a callable of your own. A name also selects
-                the function's x_opt convention, so `params.x_opt` is the
-                true argmin; a bare callable gets the raw draw.
+                `BBOB_FNS`), or a callable of your own. A name also brings the
+                constraint that function places on its optimum, so
+                `params.x_opt` is the true argmin; a bare callable is assumed
+                to admit an optimum anywhere in the box.
             num_dims: The problem dimension, at least 2 as BBOB requires.
             x_range: Range of input variables.
             x_opt_range: Range the raw optimum is drawn from, before the
@@ -78,15 +79,14 @@ class BBOB:
                     f"{fitness_fn!r} is not a BBOB function; "
                     f"available: {sorted(BBOB_FNS)}"
                 )
-            self.name = fitness_fn
-            self.fitness_fn = BBOB_FNS[fitness_fn]
-            self.x_opt_convention = X_OPT_CONVENTIONS.get(
-                fitness_fn, lambda x_opt: x_opt
-            )
+            function = BBOB_FNS[fitness_fn]
+            self.name = function.name
+            self.fitness_fn = function.fitness_fn
+            self.place_x_opt = function.place_x_opt
         else:
             self.name = getattr(fitness_fn, "__name__", "custom")
             self.fitness_fn = fitness_fn
-            self.x_opt_convention = lambda x_opt: x_opt
+            self.place_x_opt = anywhere
 
         if num_dims < 2:
             raise ValueError(f"BBOB is defined for num_dims >= 2; got {num_dims}")
@@ -109,10 +109,10 @@ class BBOB:
     def sample(self, key: jax.Array) -> BBOBParams:
         """Sample an instance of this problem.
 
-        The raw uniform x_opt draw is reshaped by the function's own
-        convention (sign vectors, scalings, sign-forcing -- see
-        `X_OPT_CONVENTIONS`), so `params.x_opt` is the true argmin, the
-        same invariant COCO keeps by storing the post-convention optimum.
+        The raw uniform x_opt draw is mapped into the positions this function
+        admits (see `place_x_opt` on `BBOBFunction`), so `params.x_opt` is
+        always the true argmin -- the invariant COCO keeps by storing the
+        post-constraint optimum.
 
         Args:
             key: JAX random key.
@@ -123,7 +123,7 @@ class BBOB:
         """
         key_x, key_f, key_r, key_q, key_noise, key_instance = jax.random.split(key, 6)
 
-        x_opt = self.x_opt_convention(
+        x_opt = self.place_x_opt(
             jax.random.uniform(
                 key_x,
                 shape=(self.num_dims,),
@@ -149,7 +149,7 @@ class BBOB:
 
         noise_params = self.noise_model.sample(key_noise, self.num_dims)
 
-        return BBOBParams(x_opt, f_opt, r, q, key_instance, noise_params)
+        return BBOBParams(key_instance, x_opt, f_opt, r, q, noise_params)
 
     def init(self, params: BBOBParams) -> BBOBState:
         """Initialize the evaluation state for an instance.

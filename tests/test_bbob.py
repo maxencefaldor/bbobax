@@ -16,13 +16,13 @@ def test_bbob_initialization():
     # A name selects the function; the default dimension is BBOB's usual 10.
     task = BBOB("sphere")
     assert task.name == "sphere"
-    assert task.fitness_fn is BBOB_FNS["sphere"]
+    assert task.fitness_fn is BBOB_FNS["sphere"].fitness_fn
     assert task.num_dims == 10
 
     # num_dims is a single int, fixed for the task.
     task_custom = BBOB("rastrigin", num_dims=5)
     assert task_custom.num_dims == 5
-    assert task_custom.fitness_fn is BBOB_FNS["rastrigin"]
+    assert task_custom.fitness_fn is BBOB_FNS["rastrigin"].fitness_fn
 
     # A bare callable is accepted, and gets the raw x_opt draw.
     def my_fn(x, state, params):
@@ -156,7 +156,7 @@ def test_suite_builds_the_standard_24():
         # The point of the refactor: the task holds the function directly, so
         # evaluation calls it -- no lax.switch over 24 branches, and nothing
         # pays for the 23 branches it does not want.
-        assert task.fitness_fn is BBOB_FNS[name]
+        assert task.fitness_fn is BBOB_FNS[name].fitness_fn
 
     # A subset is selectable, and kwargs reach every task.
     subset = suite(["sphere", "discus"], num_dims=3, clip_x=True)
