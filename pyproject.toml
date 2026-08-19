@@ -1,6 +1,6 @@
 [project]
 name = "bbobax"
-version = "0.2.1"
+version = "0.2.2"
 description = "BBOBax: Accelerated Black-Box Optimization Benchmark."
 authors = [{ name="Maxence Faldor", email="maxencefaldor@gmail.com" }]
 readme = "README.md"
