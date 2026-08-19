@@ -19,6 +19,9 @@ import jax
 import jax.numpy as jnp
 from flax.struct import dataclass
 
+# `types` imports this module, so the alias is spelled out rather than imported.
+IntScalar = int | jax.Array
+
 
 @dataclass
 class NoiseParams:
@@ -77,20 +80,17 @@ class NoiseModel:
             )
 
         # Collect active noise models
-        self.noise_ids, self.noise_models, counter = [], [], 0
-        for noise_model_name, noise_model in noise_models.items():
-            if noise_model_name in noise_model_names:
-                self.noise_ids.append(counter)
-                self.noise_models.append(noise_model)
-                counter += 1
-        self.noise_ids = jnp.array(self.noise_ids)
+        self.noise_models = [
+            model for name, model in noise_models.items() if name in noise_model_names
+        ]
+        self.noise_ids = jnp.arange(len(self.noise_models))
 
         self.noise_ranges = {**self.DEFAULT_RANGES, **(noise_ranges or {})}
 
         # Use noise stabilization close to optimal value
         self.use_stabilization = use_stabilization
 
-    def sample(self, key: jax.Array, num_dims: jax.Array) -> NoiseParams:
+    def sample(self, key: jax.Array, num_dims: IntScalar) -> NoiseParams:
         """Sample a noise model and its parameter settings.
 
         Args:

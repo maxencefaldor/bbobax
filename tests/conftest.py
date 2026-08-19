@@ -29,26 +29,24 @@ def zero_noise_params() -> NoiseParams:
 
 @pytest.fixture
 def mock_state():
-    """Create a mock BBOB state factory."""
-
-    def _get_mock_state(max_num_dims: int) -> BBOBState:
-        return BBOBState(counter=0)
-
-    return _get_mock_state
+    """Create a mock BBOB state."""
+    return BBOBState(counter=0)
 
 
 @pytest.fixture
 def mock_params():
-    """Create mock BBOB parameters factory."""
+    """Create mock BBOB parameters factory.
 
-    def _get_mock_params(num_dims: int, max_num_dims: int) -> BBOBParams:
+    One task = one function at one fixed dimension, so the instance carries no
+    function id and no dimension: every array is exactly ``num_dims`` long.
+    """
+
+    def _get_mock_params(num_dims: int) -> BBOBParams:
         return BBOBParams(
-            fn_id=jnp.array(0),
-            num_dims=jnp.array(num_dims),
-            x_opt=jnp.zeros(max_num_dims),
+            x_opt=jnp.zeros(num_dims),
             f_opt=jnp.array(0.0),
-            r=jnp.eye(max_num_dims),
-            q=jnp.eye(max_num_dims),
+            r=jnp.eye(num_dims),
+            q=jnp.eye(num_dims),
             key=jax.random.key(0),
             noise_params=zero_noise_params(),
         )
@@ -60,24 +58,19 @@ def mock_params():
 def mock_qdbbob_params():
     """Create mock QD-BBOB parameters factory."""
 
-    def _get_mock_qdbbob_params(
-        num_dims: int, max_num_dims: int, descriptor_size: int
-    ) -> QDBBOBParams:
+    def _get_mock_qdbbob_params(num_dims: int, descriptor_size: int) -> QDBBOBParams:
         # Create random projection matrix
         key = jax.random.key(0)
-        descriptor_params = jax.random.normal(key, (descriptor_size, max_num_dims))
+        descriptor_params = jax.random.normal(key, (descriptor_size, num_dims))
 
         return QDBBOBParams(
-            fn_id=jnp.array(0),
-            num_dims=jnp.array(num_dims),
-            x_opt=jnp.zeros(max_num_dims),
+            x_opt=jnp.zeros(num_dims),
             f_opt=jnp.array(0.0),
-            r=jnp.eye(max_num_dims),
-            q=jnp.eye(max_num_dims),
+            r=jnp.eye(num_dims),
+            q=jnp.eye(num_dims),
             key=jax.random.key(0),
             noise_params=zero_noise_params(),
             descriptor_params=descriptor_params,
-            descriptor_id=jnp.array(0),
         )
 
     return _get_mock_qdbbob_params

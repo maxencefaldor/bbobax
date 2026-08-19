@@ -29,6 +29,9 @@ class BBOBParams:
     Everything that defines the instance lives here, drawn once by
     ``BBOB.sample`` and never mutated:
 
+    The function and the dimension are the task's, not the instance's -- COCO
+    enumerates those and draws only the instance, and so does bbobax.
+
     - ``x_opt`` is the function's true argmin. The per-function conventions
       (sign vectors, scalings, sign-forcing) are applied at sampling time,
       mirroring how COCO stores the post-convention optimum.
@@ -39,8 +42,6 @@ class BBOBParams:
       peak layouts from it.
     """
 
-    fn_id: jax.Array
-    num_dims: jax.Array
     x_opt: jax.Array
     f_opt: jax.Array
     r: jax.Array
@@ -54,7 +55,6 @@ class QDBBOBParams(BBOBParams):
     """QD-BBOB task parameters."""
 
     descriptor_params: jax.Array
-    descriptor_id: jax.Array
 
 
 @dataclass

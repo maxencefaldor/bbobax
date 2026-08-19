@@ -1,5 +1,7 @@
 """Black-box Optimization Benchmarking Task."""
 
+import dataclasses
+
 import jax
 import jax.numpy as jnp
 
@@ -11,19 +13,29 @@ from .types import (
     BBOBState,
     DescriptorFn,
     FitnessFn,
-    IntScalar,
     QDBBOBEval,
     QDBBOBParams,
 )
 
 
 class BBOB:
-    """Black-box Optimization Benchmarking Task class (Single Objective)."""
+    """One BBOB problem: one function at one dimension.
+
+    That is COCO's own structure -- a suite enumerates function x dimension x
+    instance, and only the instance is drawn. A task here fixes the function
+    and the dimension; ``sample`` draws an instance of it.
+
+    To cover many functions or many dimensions, hold many tasks and loop over
+    them (``bbobax.suite`` builds the standard 24). Under ``jit`` that loop
+    unrolls, so each task keeps its own compiled code and nothing pays for
+    dispatch -- unlike a single task that switches over functions, which under
+    ``vmap`` must evaluate every branch for every solution.
+    """
 
     def __init__(
         self,
-        fitness_fns: list[FitnessFn] | dict[str, FitnessFn],
-        num_dims: int | tuple[int, int] = 10,
+        fitness_fn: str | FitnessFn,
+        num_dims: int = 10,
         x_range: tuple[float, float] = (-5.0, 5.0),
         x_opt_range: tuple[float, float] = (-4.0, 4.0),
         f_opt_range: tuple[float, float] = (0.0, 0.0),
@@ -34,28 +46,14 @@ class BBOB:
         """Initialize the BBOB task.
 
         Args:
-            fitness_fns: Dictionary of fitness functions by name (canonical:
-                ``bbob_fns`` or a subset), or a bare list. Names drive the
-                per-function x_opt conventions, so ``params.x_opt`` is always
-                the true argmin; a bare list gets no conventions.
-            num_dims: The problem dimension. An int fixes it, which is what
-                official BBOB does -- dimension is a coordinate of the
-                experiment, enumerated alongside function and instance -- and
-                is the only setting that reproduces a COCO problem exactly.
-                A ``(low, high)`` pair samples it per instance, inclusive at
-                both ends, which enables meta-learning across dimensions at a
-                cost worth understanding: solutions are always
-                ``max(num_dims)`` long, and the coordinates beyond an
-                instance's own dimension are inert -- they change neither
-                fitness nor descriptor. Such an instance is a D-dimensional
-                problem *embedded in a larger search space*, not COCO's
-                D-dimensional problem: an optimizer still adapts over every
-                coordinate and must discover which ones do nothing. Results
-                from a sampled range are therefore not comparable with
-                published BBOB results; fix the dimension for that.
+            fitness_fn: The name of a standard BBOB function (a key of
+                ``bbob_fns``), or a callable of your own. A name also selects
+                the function's x_opt convention, so ``params.x_opt`` is the
+                true argmin; a bare callable gets the raw draw.
+            num_dims: The problem dimension, at least 2 as BBOB requires.
             x_range: Range of input variables.
-            x_opt_range: Range of optimal input variables. BBOB draws x_opt in
-                [-4, 4]; per-function conventions then reshape the draw.
+            x_opt_range: Range the raw optimum is drawn from, before the
+                function's convention reshapes it. BBOB uses [-4, 4].
             f_opt_range: Range of optimal fitness values. The default pins
                 f_opt to 0; official BBOB draws a 2-decimal Cauchy clipped to
                 +-1000 -- configure that explicitly if you want it.
@@ -69,33 +67,30 @@ class BBOB:
                 plain noiseless suite with no stabilization, exactly COCO's
                 noiseless BBOB; pass a config to opt into noise.
 
+        Raises:
+            KeyError: If ``fitness_fn`` names no standard BBOB function.
+            ValueError: If ``num_dims`` is below 2.
+
         """
-        if isinstance(fitness_fns, dict):
-            self.fitness_fn_names = list(fitness_fns.keys())
-            self.fitness_fns = list(fitness_fns.values())
-        else:
-            self.fitness_fn_names = None
-            self.fitness_fns = fitness_fns
-
-        # Per-function preparation of the raw x_opt draw (identity where no
-        # convention exists, and everywhere for unnamed function lists).
-        if self.fitness_fn_names is not None:
-            self._x_opt_conventions = [
-                x_opt_conventions.get(name, lambda x_opt: x_opt)
-                for name in self.fitness_fn_names
-            ]
-        else:
-            self._x_opt_conventions = [lambda x_opt: x_opt] * len(self.fitness_fns)
-
-        if isinstance(num_dims, int):
-            self.min_num_dims = self.max_num_dims = num_dims
-        else:
-            self.min_num_dims, self.max_num_dims = num_dims
-        if not 1 <= self.min_num_dims <= self.max_num_dims:
-            raise ValueError(
-                f"num_dims must be a positive int or an ordered (low, high) pair; "
-                f"got {num_dims!r}"
+        if isinstance(fitness_fn, str):
+            if fitness_fn not in bbob_fns:
+                raise KeyError(
+                    f"{fitness_fn!r} is not a BBOB function; "
+                    f"available: {sorted(bbob_fns)}"
+                )
+            self.name = fitness_fn
+            self.fitness_fn = bbob_fns[fitness_fn]
+            self.x_opt_convention = x_opt_conventions.get(
+                fitness_fn, lambda x_opt: x_opt
             )
+        else:
+            self.name = getattr(fitness_fn, "__name__", "custom")
+            self.fitness_fn = fitness_fn
+            self.x_opt_convention = lambda x_opt: x_opt
+
+        if num_dims < 2:
+            raise ValueError(f"BBOB is defined for num_dims >= 2; got {num_dims}")
+        self.num_dims = num_dims
         self.x_range = x_range
         self.x_opt_range = x_opt_range
         self.f_opt_range = f_opt_range
@@ -111,40 +106,31 @@ class BBOB:
             }
         self.noise_model = NoiseModel(**noise_config)
 
-        self.num_fns = len(self.fitness_fns)
-
     def sample(self, key: jax.Array) -> BBOBParams:
-        """Sample BBOB task parameters.
+        """Sample an instance of this problem.
 
-        The raw uniform x_opt draw is reshaped by the sampled function's
+        The raw uniform x_opt draw is reshaped by the function's own
         convention (sign vectors, scalings, sign-forcing -- see
         ``x_opt_conventions``), so ``params.x_opt`` is the true argmin, the
         same invariant COCO keeps by storing the post-convention optimum.
+
+        Args:
+            key: JAX random key.
+
+        Returns:
+            The instance's parameters.
+
         """
-        (
-            key_fn,
-            key_d,
-            key_x,
-            key_f,
-            key_r,
-            key_q,
-            key_noise,
-            key_instance,
-        ) = jax.random.split(key, 8)
+        key_x, key_f, key_r, key_q, key_noise, key_instance = jax.random.split(key, 6)
 
-        fn_id = jax.random.randint(key_fn, (), minval=0, maxval=self.num_fns)
-        # randint's maxval is exclusive; both bounds here are inclusive.
-        num_dims = jax.random.randint(
-            key_d, (), minval=self.min_num_dims, maxval=self.max_num_dims + 1
+        x_opt = self.x_opt_convention(
+            jax.random.uniform(
+                key_x,
+                shape=(self.num_dims,),
+                minval=self.x_opt_range[0],
+                maxval=self.x_opt_range[1],
+            )
         )
-
-        x_opt = jax.random.uniform(
-            key_x,
-            shape=(self.max_num_dims,),
-            minval=self.x_opt_range[0],
-            maxval=self.x_opt_range[1],
-        )
-        x_opt = jax.lax.switch(fn_id, self._x_opt_conventions, x_opt)
         f_opt = jax.random.uniform(
             key_f,
             minval=self.f_opt_range[0],
@@ -155,24 +141,21 @@ class BBOB:
         # mutated. BBOB always rotates; with sample_rotation off both are the
         # identity and every rotated variant collapses onto its base function.
         if self.sample_rotation:
-            r = self.generate_random_rotation(key_r, self.max_num_dims, num_dims)
-            q = self.generate_random_rotation(key_q, self.max_num_dims, num_dims)
+            r = self.generate_random_rotation(key_r, self.num_dims)
+            q = self.generate_random_rotation(key_q, self.num_dims)
         else:
-            r = jnp.eye(self.max_num_dims)
-            q = jnp.eye(self.max_num_dims)
+            r = jnp.eye(self.num_dims)
+            q = jnp.eye(self.num_dims)
 
-        # Sample noise model parameters
-        noise_params = self.noise_model.sample(key_noise, num_dims)
+        noise_params = self.noise_model.sample(key_noise, self.num_dims)
 
-        return BBOBParams(
-            fn_id, num_dims, x_opt, f_opt, r, q, key_instance, noise_params
-        )
+        return BBOBParams(x_opt, f_opt, r, q, key_instance, noise_params)
 
     def init(self, params: BBOBParams) -> BBOBState:
-        """Initialize the task state for an instance.
+        """Initialize the evaluation state for an instance.
 
         Args:
-            params: Task parameters.
+            params: Instance parameters.
 
         Returns:
             Initial task state.
@@ -191,9 +174,9 @@ class BBOB:
 
         Args:
             key: JAX random key.
-            x: Input solution.
+            x: Input solution, shape ``(num_dims,)``.
             state: Current task state.
-            params: Task parameters.
+            params: Instance parameters.
 
         Returns:
             Updated state and evaluation results.
@@ -202,24 +185,15 @@ class BBOB:
         if self.clip_x:
             x = jnp.clip(x, self.x_range[0], self.x_range[1])
 
-        # Evaluate fitness
-        # Using switch to select the correct fitness function based on fn_id
-        fn_val, fn_pen = jax.lax.switch(
-            params.fn_id,
-            self.fitness_fns,
-            x,
-            state,
-            params,
-        )
+        fn_val, fn_pen = self.fitness_fn(x, state, params)
 
-        # Apply noise
+        # Noise applies to the raw value alone; the boundary penalty and f_opt
+        # are added outside it, as the noisy-functions paper prescribes.
         fn_noise = self.noise_model.apply(key, fn_val, params.noise_params)
+        fitness = fn_noise + fn_pen + params.f_opt
 
-        # Add boundary handling penalty and optimal function value
-        final_fitness = fn_noise + fn_pen + params.f_opt
-
-        bbob_eval = BBOBEval(fitness=final_fitness)
-        return state.replace(counter=state.counter + 1), bbob_eval
+        state = dataclasses.replace(state, counter=state.counter + 1)
+        return state, BBOBEval(fitness=fitness)
 
     def sample_x(self, key: jax.Array) -> jax.Array:
         """Sample a random solution.
@@ -228,108 +202,93 @@ class BBOB:
             key: JAX random key.
 
         Returns:
-            Random solution within the defined range.
+            Random solution within the defined range, shape ``(num_dims,)``.
 
         """
         return jax.random.uniform(
             key,
-            shape=(self.max_num_dims,),
+            shape=(self.num_dims,),
             minval=self.x_range[0],
             maxval=self.x_range[1],
         )
 
-    def generate_random_rotation(
-        self, key: jax.Array, max_dims: int, num_dims: IntScalar
-    ) -> jax.Array:
-        """Generate a random (n, n) rotation matrix uniformly sampled from SO(n)."""
-        # Generate fixed-size random normal matrix but mask based on num_dims
-        random_matrix = jax.random.normal(key, (max_dims, max_dims))
-        mask = (jnp.arange(max_dims)[:, None] < num_dims) & (
-            jnp.arange(max_dims)[None, :] < num_dims
+    @staticmethod
+    def generate_random_rotation(key: jax.Array, num_dims: int) -> jax.Array:
+        """Generate a random rotation matrix, Haar-uniform on SO(n).
+
+        Args:
+            key: JAX random key.
+            num_dims: Size of the matrix.
+
+        Returns:
+            An orthogonal ``(num_dims, num_dims)`` matrix of determinant +1.
+
+        """
+        # QR of a Gaussian matrix with the sign correction that makes it Haar
+        # (Mezzadri 2007). COCO orthonormalizes by Gram-Schmidt and lands on
+        # O(n); forcing the determinant to +1 restricts this to SO(n), which
+        # differs only in orientation.
+        orthogonal_matrix, upper_triangular = jnp.linalg.qr(
+            jax.random.normal(key, (num_dims, num_dims))
         )
-        random_matrix = jnp.where(mask, random_matrix, 0.0)
 
-        # Add identity matrix for masked region to ensure valid QR decomposition
-        random_matrix = random_matrix + jnp.where(~mask, jnp.eye(max_dims), 0.0)
-
-        # QR decomposition
-        orthogonal_matrix, upper_triangular = jnp.linalg.qr(random_matrix)
-
-        # Extract diagonal and create sign correction matrix (zero-safe: a zero
-        # diagonal entry has measure zero but would otherwise produce NaN)
+        # Zero-safe: a zero diagonal entry has measure zero but would give NaN.
         diagonal = jnp.diag(upper_triangular)
-        sign_correction = jnp.diag(jnp.where(diagonal == 0.0, 1.0, jnp.sign(diagonal)))
+        sign_correction = jnp.where(diagonal == 0.0, 1.0, jnp.sign(diagonal))
+        rotation = orthogonal_matrix * sign_correction
 
-        # Apply sign correction
-        rotation = orthogonal_matrix @ sign_correction
-
-        # Ensure determinant is 1 by possibly flipping first row
         determinant = jnp.linalg.det(rotation)
-        rotation = rotation.at[0].multiply(determinant)
-
-        return rotation
-
-    @classmethod
-    def create_default(cls, **kwargs):
-        """Create a BBOB task with all 24 standard functions."""
-        return cls(fitness_fns=bbob_fns, **kwargs)
+        return rotation.at[0].multiply(determinant)
 
 
 class QDBBOB(BBOB):
-    """Quality-Diversity Black-box Optimization Benchmarking Task class."""
+    """One QD-BBOB problem: a BBOB function paired with a descriptor.
+
+    The Quality-Diversity extension is bbobax's own; COCO has no descriptor
+    notion.
+    """
 
     def __init__(
         self,
-        descriptor_fns: list[DescriptorFn] | dict[str, DescriptorFn],
-        fitness_fns: list[FitnessFn] | dict[str, FitnessFn],
+        fitness_fn: str | FitnessFn,
+        descriptor_fn: DescriptorFn,
         descriptor_size: int = 2,
         **kwargs,
     ):
         """Initialize the QD-BBOB task.
 
         Args:
-            descriptor_fns: List or dictionary of descriptor functions.
-            fitness_fns: List or dictionary of fitness functions.
-            descriptor_size: Size of the descriptor vector.
+            fitness_fn: The name of a standard BBOB function, or a callable.
+            descriptor_fn: The descriptor function.
+            descriptor_size: Dimensionality of the descriptor.
             **kwargs: Additional arguments for BBOB.
 
         """
-        super().__init__(fitness_fns=fitness_fns, **kwargs)
-
-        if isinstance(descriptor_fns, dict):
-            self.descriptor_fns = list(descriptor_fns.values())
-        else:
-            self.descriptor_fns = descriptor_fns
-
+        super().__init__(fitness_fn=fitness_fn, **kwargs)
+        self.descriptor_fn = descriptor_fn
         self.descriptor_size = descriptor_size
-        self.num_descriptors = len(self.descriptor_fns)
 
     def sample(self, key: jax.Array) -> QDBBOBParams:
-        """Sample BBOB task parameters including descriptor params."""
-        key_base, key_desc_id, key_desc_params = jax.random.split(key, 3)
+        """Sample an instance, including its descriptor projection.
 
+        Args:
+            key: JAX random key.
+
+        Returns:
+            The instance's parameters.
+
+        """
+        key_base, key_descriptor = jax.random.split(key)
         base_params = super().sample(key_base)
-
-        desc_id = jax.random.randint(
-            key_desc_id, (), minval=0, maxval=self.num_descriptors
-        )
-
-        # Descriptor params
-        descriptor_params = self.generate_gaussian_projection(
-            key_desc_params, base_params.num_dims
-        )
-
+        # Shallow field copy: `dataclasses.asdict` would recurse and turn the
+        # nested NoiseParams into a plain dict.
+        base = {
+            field.name: getattr(base_params, field.name)
+            for field in dataclasses.fields(base_params)
+        }
         return QDBBOBParams(
-            fn_id=base_params.fn_id,
-            num_dims=base_params.num_dims,
-            x_opt=base_params.x_opt,
-            f_opt=base_params.f_opt,
-            r=base_params.r,
-            q=base_params.q,
-            key=base_params.key,
-            noise_params=base_params.noise_params,
-            descriptor_params=descriptor_params,
-            descriptor_id=desc_id,
+            **base,
+            descriptor_params=self.generate_gaussian_projection(key_descriptor),
         )
 
     def evaluate(
@@ -343,57 +302,47 @@ class QDBBOB(BBOB):
 
         Args:
             key: JAX random key.
-            x: Input solution.
+            x: Input solution, shape ``(num_dims,)``.
             state: Current task state.
-            params: Task parameters.
+            params: Instance parameters.
 
         Returns:
             Updated state and evaluation results.
 
         """
         state, bbob_eval = super().evaluate(key, x, state, params)
+        descriptor = self.descriptor_fn(x, state, params)
+        return state, QDBBOBEval(fitness=bbob_eval.fitness, descriptor=descriptor)
 
-        descriptor = jax.lax.switch(
-            params.descriptor_id, self.descriptor_fns, x, state, params
-        )
+    def generate_gaussian_projection(self, key: jax.Array) -> jax.Array:
+        """Generate the instance's random Gaussian projection matrix.
 
-        bbob_eval = QDBBOBEval(fitness=bbob_eval.fitness, descriptor=descriptor)
-        return state, bbob_eval
-
-    def generate_gaussian_projection(
-        self, key: jax.Array, num_dims: IntScalar
-    ) -> jax.Array:
-        """Generate a random Gaussian projection matrix.
+        Entries are ``N(0, 1) / sqrt(descriptor_size)``, so the projection
+        preserves expected squared norms.
 
         Args:
             key: JAX random key.
-            num_dims: Number of dimensions.
 
         Returns:
-            Random projection matrix.
+            A ``(descriptor_size, num_dims)`` matrix.
 
         """
-        descriptor_params = jax.random.normal(
-            key,
-            shape=(self.descriptor_size, self.max_num_dims),
+        return jax.random.normal(
+            key, shape=(self.descriptor_size, self.num_dims)
         ) / jnp.sqrt(self.descriptor_size)
-        mask = jnp.arange(self.max_num_dims) < num_dims
-        descriptor_params = jnp.where(mask, descriptor_params, 0)
-        return descriptor_params
 
-    @classmethod
-    def create_default(cls, descriptor_fns, descriptor_size: int = 2, **kwargs):
-        """Create a QD-BBOB task with all 24 standard functions.
 
-        Args:
-            descriptor_fns: List or dictionary of descriptor functions.
-            descriptor_size: Size of the descriptor vector.
-            **kwargs: Additional arguments for BBOB.
+def suite(names: list[str] | None = None, **kwargs) -> dict[str, BBOB]:
+    """Build the standard BBOB functions as individual tasks.
 
-        """
-        return cls(
-            descriptor_fns=descriptor_fns,
-            fitness_fns=bbob_fns,
-            descriptor_size=descriptor_size,
-            **kwargs,
-        )
+    Args:
+        names: Which functions to include; defaults to all 24, in the
+            canonical f1-f24 order.
+        **kwargs: Passed to every task (``num_dims``, ``noise_config``, ...).
+
+    Returns:
+        A mapping from function name to task. Loop over it to cover the suite:
+        each task compiles separately, so nothing pays for dispatch.
+
+    """
+    return {name: BBOB(name, **kwargs) for name in (names or list(bbob_fns))}

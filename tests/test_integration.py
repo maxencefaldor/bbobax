@@ -3,18 +3,18 @@
 import jax
 import jax.numpy as jnp
 
-from bbobax.bbob import BBOB, QDBBOB
+from bbobax.bbob import QDBBOB, suite
 from bbobax.descriptor_fns import get_random_projection_descriptor
 
 
 def test_bbob_optimization_loop():
     """Test a simple random search optimization loop on BBOB."""
-    max_dims = 5
+    num_dims = 5
     population_size = 20
     num_generations = 5
 
     # Initialize task
-    task = BBOB.create_default(num_dims=max_dims)
+    task = suite(["rastrigin"], num_dims=num_dims)["rastrigin"]
     key = jax.random.key(42)
 
     # Sample task instance
@@ -23,7 +23,7 @@ def test_bbob_optimization_loop():
     state = task.init(params)
 
     # Optimization loop
-    current_best_fitness = -jnp.inf
+    current_best_fitness = jnp.inf
 
     def batch_evaluate(k, x, s, p):
         return task.evaluate(k, x, s, p)
@@ -38,49 +38,69 @@ def test_bbob_optimization_loop():
         # Sample random population
         xs = jax.random.uniform(
             key_gen,
-            (population_size, max_dims),
+            (population_size, num_dims),
             minval=task.x_range[0],
             maxval=task.x_range[1],
         )
 
-        # Evaluate
-        # Note: state update in batch is tricky because we get N new states.
-        # BBOB state only contains counters and rotation matrices (constant).
-        # The counter increment is the only change.
-        # In a real setting, we might just take one state or not update state in vmap
-        # if read-only.
-        # Here we just take the first state from the batch for next iteration,
-        # accepting that counters might diverge if we were tracking exact evals.
+        # Evaluate. vmap returns one state per solution; the counter is the
+        # only thing that changes, so take the first for continuity.
         new_states, results = batch_evaluate_vmapped(keys, xs, state, params)
 
-        # Update best fitness
-        gen_best = jnp.max(results.fitness)
-        current_best_fitness = jnp.maximum(current_best_fitness, gen_best)
-
-        # Update state (just picking one for continuity)
-        # In reality, BBOB state is mostly static or per-eval-independent
-        # (except counter for logging/termination)
+        current_best_fitness = jnp.minimum(
+            current_best_fitness, jnp.min(results.fitness)
+        )
         state = jax.tree_util.tree_map(lambda x: x[0], new_states)
 
-    # Check that we got a valid fitness
+    # BBOB minimizes, and f_opt is pinned to 0 by default: every value is above
+    # the optimum, and the search has actually made progress.
     assert not jnp.isnan(current_best_fitness)
     assert not jnp.isinf(current_best_fitness)
-    assert current_best_fitness > -1e9  # Reasonable lower bound
+    assert current_best_fitness >= 0.0
+    assert int(state.counter) == num_generations
+
+
+def test_suite_optimization_loop():
+    """Loop over the suite: each task is evaluated by its own function."""
+    num_dims = 4
+    population_size = 8
+    tasks = suite(num_dims=num_dims)
+    key = jax.random.key(0)
+
+    best = {}
+    for name, task in tasks.items():
+        key, key_sample, key_x, key_eval = jax.random.split(key, 4)
+        params = task.sample(key_sample)
+        state = task.init(params)
+
+        xs = jax.vmap(task.sample_x)(jax.random.split(key_x, population_size))
+        keys = jax.random.split(key_eval, population_size)
+        _, results = jax.vmap(task.evaluate, in_axes=(0, 0, None, None))(
+            keys, xs, state, params
+        )
+
+        assert results.fitness.shape == (population_size,)
+        assert not jnp.any(jnp.isnan(results.fitness))
+        best[name] = float(jnp.min(results.fitness))
+
+    assert len(best) == 24
+    # 24 genuinely different landscapes: no two share a best value.
+    assert len(set(best.values())) == 24
 
 
 def test_qdbbob_optimization_loop():
     """Test a simple random search optimization loop on QD-BBOB."""
-    max_dims = 5
+    num_dims = 5
     population_size = 20
     num_generations = 5
     descriptor_size = 2
 
     # Initialize task
-    descriptor_fn = get_random_projection_descriptor()
-    task = QDBBOB.create_default(
-        descriptor_fns=[descriptor_fn],
+    task = QDBBOB(
+        fitness_fn="sphere",
+        descriptor_fn=get_random_projection_descriptor(),
         descriptor_size=descriptor_size,
-        num_dims=max_dims,
+        num_dims=num_dims,
     )
     key = jax.random.key(42)
 
@@ -103,7 +123,7 @@ def test_qdbbob_optimization_loop():
 
         xs = jax.random.uniform(
             key_gen,
-            (population_size, max_dims),
+            (population_size, num_dims),
             minval=task.x_range[0],
             maxval=task.x_range[1],
         )

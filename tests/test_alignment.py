@@ -32,6 +32,7 @@ import pytest
 from _official import bbobbenchmarks as bb
 from bbobax.fitness_fns import bbob_fns
 from bbobax.types import BBOBParams, BBOBState
+from conftest import zero_noise_params
 
 # Tolerances: values must match to 1e-9 relative against |f - fopt|, with an
 # absolute floor of 1e-8 for near-zero values; mapping reconstructions must
@@ -202,15 +203,17 @@ _INSTANCE_MAPPINGS = {
 
 
 def _make_params_state(D, x_opt, f_opt, r, q, key=None):
+    # The function and the dimension are the task's, not the instance's: params
+    # carry neither, and every array is exactly D long.
     params = BBOBParams(
-        fn_id=jnp.array(0),
-        num_dims=jnp.array(D),
         x_opt=jnp.asarray(x_opt, dtype=jnp.float64),
         f_opt=jnp.array(float(f_opt)),
         r=jnp.asarray(r, dtype=jnp.float64),
         q=jnp.asarray(q, dtype=jnp.float64),
         key=key if key is not None else jax.random.key(0),
-        noise_params=None,
+        # Fitness functions never read noise_params; BBOB.evaluate does, and it
+        # is not on this path. Zeros keep the params well-formed all the same.
+        noise_params=zero_noise_params(),
     )
     return params, BBOBState(counter=0)
 
@@ -295,12 +298,11 @@ def _gallagher_layout(name, D, instance_key, x_opt):
 
     Mirrors the PRNG call sequence in ``fitness_fns.gallagher_*`` exactly
     (fold_in with the function's tag, then permutation / per-peak diagonal
-    permutations / peak positions), at full dimensionality (num_dims == D).
-    Returns numpy (w, diagonals, y).
+    permutations / peak positions). Returns numpy (w, diagonals, y).
     """
     spec = _GALLAGHER[name]
-    num_optima = spec["num_optima"]
-    key = jax.random.fold_in(instance_key, spec["fold"])
+    num_optima = int(spec["num_optima"])
+    key = jax.random.fold_in(instance_key, int(spec["fold"]))
 
     w = np.where(
         np.arange(num_optima) == 0,
@@ -319,10 +321,7 @@ def _gallagher_layout(name, D, instance_key, x_opt):
 
     key, subkey = jax.random.split(key)
     keys = jax.random.split(subkey, num_optima)
-    mask = jnp.arange(D) < D  # all True at full dimensionality, as in the fn
-    perms = jax.vmap(
-        lambda k: jax.random.choice(k, jnp.arange(D), shape=(D,), replace=False, p=mask)
-    )(keys)
+    perms = jax.vmap(lambda k: jax.random.permutation(k, D))(keys)
     diags = np.stack([d[p] for d, p in zip(diags, np.asarray(perms))])
 
     key, subkey = jax.random.split(key)

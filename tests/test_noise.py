@@ -13,18 +13,20 @@ def test_noise_model_initialization():
     model = NoiseModel()
     assert model.use_stabilization is False
 
-    # Custom initialization
-    custom_ranges = {
-        "gaussian_beta": (0.1, 0.5),
-        "uniform_alpha": None,
-        "uniform_beta": None,
-        "cauchy_alpha": None,
-        "cauchy_p": None,
-        "additive_std": None,
-    }
-    model_custom = NoiseModel(noise_ranges=custom_ranges, use_stabilization=True)
+    # Custom initialization: noise_ranges is merged over DEFAULT_RANGES, so a
+    # partial dictionary overrides only what it names.
+    model_custom = NoiseModel(
+        noise_ranges={"gaussian_beta": (0.1, 0.5)}, use_stabilization=True
+    )
     assert model_custom.use_stabilization is True
     assert model_custom.noise_ranges["gaussian_beta"] == (0.1, 0.5)
+    assert (
+        model_custom.noise_ranges["cauchy_p"] == NoiseModel.DEFAULT_RANGES["cauchy_p"]
+    )
+
+    # Unknown models are rejected by name.
+    with pytest.raises(ValueError, match="unknown noise models"):
+        NoiseModel(noise_model_names=("not_a_noise_model",))
 
 
 def test_noise_model_sample():
@@ -49,7 +51,7 @@ def test_noise_model_sample():
 def test_noise_model_apply(noise_type):
     """Test application of different noise models."""
     # Initialize model with only the specific noise type enabled to ensure we test it
-    model = NoiseModel(noise_model_names=[noise_type])
+    model = NoiseModel(noise_model_names=(noise_type,))
     key = jax.random.key(0)
 
     # Sample parameters (noise_id should correspond to the single available model)

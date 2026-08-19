@@ -3,6 +3,7 @@
 from .bbob import (
     BBOB,
     QDBBOB,
+    suite,
 )
 from .descriptor_fns import get_random_projection_descriptor
 from .fitness_fns import bbob_fns
@@ -18,6 +19,7 @@ from .types import (
 __all__ = [
     "BBOB",
     "QDBBOB",
+    "suite",
     "BBOBParams",
     "QDBBOBParams",
     "BBOBState",

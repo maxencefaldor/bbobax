@@ -23,25 +23,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .types import BBOBParams, BBOBState, FitnessFn, IntScalar
+from .types import BBOBParams, BBOBState, FitnessFn
 
 
-def _lambda_alpha_vector(
-    alpha: float, max_num_dims: int, num_dims: IntScalar
-) -> jax.Array:
-    """Masked lambda alpha vector.
-
-    The ``num_dims > 1`` guards throughout this module avoid a 0/0 exponent at
-    D = 1. Official BBOB builds the exponent with ``linspace(0, 1, D)``, which
-    is ``[0.]`` at D = 1, so every fallback here is the formula at exponent 0.
-    BBOB itself is defined for D >= 2, so this only fixes the degenerate case.
-    """
-    mask = jnp.arange(max_num_dims) < num_dims
-
-    exp = (
-        jnp.where(num_dims > 1, 0.5 * jnp.arange(max_num_dims) / (num_dims - 1), 0.0)
-        * mask
-    )
+def _lambda_alpha_vector(alpha: float, num_dims: int) -> jax.Array:
+    """Return the conditioning vector ``alpha ** (0.5 i / (D - 1))``."""
+    exp = 0.5 * jnp.arange(num_dims) / (num_dims - 1)
     return jnp.power(alpha, exp)
 
 
@@ -60,34 +47,24 @@ def transform_osz(element: jax.Array) -> jax.Array:
     )
 
 
-def transform_asy(x: jax.Array, beta: float, num_dims: IntScalar) -> jax.Array:
+def transform_asy(x: jax.Array, beta: float) -> jax.Array:
     """Asymmetry transformation function.
 
     The untaken branch is sanitized before ``sqrt``/``power`` so that
     ``jax.grad`` through negative coordinates yields zeros instead of NaN
     (the standard double-``where`` guard); values are unchanged.
     """
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < num_dims
+    num_dims = x.shape[0]
 
     safe_x = jnp.where(x > 0.0, x, 0.0)
-    exp = (
-        1.0
-        + beta
-        * jnp.where(num_dims > 1, jnp.arange(max_num_dims) / (num_dims - 1), 0.0)
-        * jnp.sqrt(safe_x)
-        * mask
-    )
+    exp = 1.0 + beta * (jnp.arange(num_dims) / (num_dims - 1)) * jnp.sqrt(safe_x)
     return jnp.where(x > 0.0, jnp.power(safe_x, exp), x)
 
 
-def f_pen(x: jax.Array, num_dims: IntScalar) -> jax.Array:
+def f_pen(x: jax.Array) -> jax.Array:
     """Boundary penalty."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < num_dims
-
     out = jnp.abs(x) - 5.0
-    return jnp.sum(jnp.square(jnp.maximum(0.0, out * mask)))
+    return jnp.sum(jnp.square(jnp.maximum(0.0, out)))
 
 
 # Weierstrass is a truncated series with fixed coefficients: 12 summands, as
@@ -106,60 +83,45 @@ def sphere(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Sphere Function (Hansen et al., 2010, p. 5)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
-
     z = x - params.x_opt
 
     out = jnp.square(z)
-    return jnp.sum(out * mask), jnp.array(0.0)
+    return jnp.sum(out), jnp.array(0.0)
 
 
 def ellipsoidal(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Ellipsoidal Function (Hansen et al., 2010, p. 10)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     z = transform_osz(x - params.x_opt)
 
-    exp = (
-        jnp.where(
-            params.num_dims > 1,
-            6.0 * jnp.arange(max_num_dims) / (params.num_dims - 1),
-            0.0,
-        )
-        * mask
-    )
+    exp = 6.0 * jnp.arange(num_dims) / (num_dims - 1)
     out = jnp.power(10.0, exp) * jnp.square(z)
-    return jnp.sum(out * mask), jnp.array(0.0)
+    return jnp.sum(out), jnp.array(0.0)
 
 
 def rastrigin(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Rastrigin Function (Hansen et al., 2010, p. 15)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
-    z = transform_asy(transform_osz(x - params.x_opt), 0.2, params.num_dims)
-    z = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z
+    z = transform_asy(transform_osz(x - params.x_opt), 0.2)
+    z = _lambda_alpha_vector(10.0, num_dims) * z
 
     out_1 = jnp.cos(2 * jnp.pi * z)
     out_2 = jnp.square(z)
 
-    return 10 * (params.num_dims - jnp.sum(out_1 * mask)) + jnp.sum(
-        out_2 * mask
-    ), jnp.array(0.0)
+    return 10 * (num_dims - jnp.sum(out_1)) + jnp.sum(out_2), jnp.array(0.0)
 
 
 def bueche_rastrigin(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Bueche-Rastrigin Function (Hansen et al., 2010, p. 20)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     # The paper's "for i = 1, 3, 5, ..." is 1-based; the skewed coordinates are
     # the 0-based EVEN ones. Both officials agree (transform_vars_brs.c:46 with a
@@ -168,15 +130,8 @@ def bueche_rastrigin(
     # always, so conditioning on the post-osz sign (as the officials do) is exact.
     z = transform_osz(x - params.x_opt)
 
-    exp = (
-        jnp.where(
-            params.num_dims > 1,
-            0.5 * jnp.arange(max_num_dims) / (params.num_dims - 1),
-            0.0,
-        )
-        * mask
-    )
-    cond = (z > 0.0) & (jnp.arange(max_num_dims) % 2 == 0)
+    exp = 0.5 * jnp.arange(num_dims) / (num_dims - 1)
+    cond = (z > 0.0) & (jnp.arange(num_dims) % 2 == 0)
     s = jnp.where(cond, jnp.power(10.0, exp + 1), jnp.power(10.0, exp))
 
     z = s * z
@@ -184,17 +139,14 @@ def bueche_rastrigin(
     out_1 = jnp.cos(2 * jnp.pi * z)
     out_2 = jnp.square(z)
 
-    return 10 * (params.num_dims - jnp.sum(out_1 * mask)) + jnp.sum(
-        out_2 * mask
-    ), 100 * f_pen(x, params.num_dims)
+    return 10 * (num_dims - jnp.sum(out_1)) + jnp.sum(out_2), 100 * f_pen(x)
 
 
 def linear_slope(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Linear Slope (Hansen et al., 2010, p. 25)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     # params.x_opt is the true optimum: +-5 per coordinate, applied by the
     # sampling convention (see x_opt_conventions).
@@ -202,32 +154,26 @@ def linear_slope(
 
     z = jnp.where(x * x_opt < 25.0, x, x_opt)
 
-    exp = (
-        jnp.where(
-            params.num_dims > 1, jnp.arange(max_num_dims) / (params.num_dims - 1), 0.0
-        )
-        * mask
-    )
+    exp = jnp.arange(num_dims) / (num_dims - 1)
     s = jnp.sign(x_opt) * jnp.power(10.0, exp)
 
     out = 5.0 * jnp.abs(s) - s * z
-    return jnp.sum(out * mask), jnp.array(0.0)
+    return jnp.sum(out), jnp.array(0.0)
 
 
 def attractive_sector(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Attractive Sector Function (Hansen et al., 2010, p. 30)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     z = params.r @ (x - params.x_opt)
-    z = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z
+    z = _lambda_alpha_vector(10.0, num_dims) * z
     z = params.q @ z
 
     s = jnp.where(z * params.x_opt > 0.0, 100.0, 1.0)
 
-    out = jnp.sum(jnp.square(s * z) * mask)
+    out = jnp.sum(jnp.square(s * z))
     return jnp.power(transform_osz(out), 0.9), jnp.array(0.0)
 
 
@@ -235,11 +181,10 @@ def step_ellipsoidal(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Step Ellipsoidal Function (Hansen et al., 2010, p. 35)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     z_hat = params.r @ (x - params.x_opt)
-    z_hat = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z_hat
+    z_hat = _lambda_alpha_vector(10.0, num_dims) * z_hat
 
     # floor(0.5 + z) is round-half-up, matching COCO's C (`coco_double_round`).
     # The 2009 Python reference uses numpy's round-half-to-even instead, so the
@@ -253,47 +198,35 @@ def step_ellipsoidal(
 
     z = params.q @ z_tilde
 
-    exp = (
-        jnp.where(
-            params.num_dims > 1,
-            2.0 * jnp.arange(max_num_dims) / (params.num_dims - 1.0),
-            0.0,
-        )
-        * mask
-    )
+    exp = 2.0 * jnp.arange(num_dims) / (num_dims - 1.0)
     # No leading coefficient: the conditioning lives entirely in the exponent.
     # (An earlier version carried an extra x100 here; paper 2.7, f_step_ellipsoid.c
     # and bbobbenchmarks all agree there is none.)
-    # `exp` is masked as well as `out`: without it the padded coordinates take
-    # a huge exponent, and 10**exp overflows to inf in float32 before the outer
-    # mask can zero it -- inf * 0 is nan. The double masking is load-bearing.
-    out = jnp.sum(jnp.power(10.0, exp) * jnp.square(z) * mask)
-    return 0.1 * jnp.maximum(jnp.abs(z_hat[0]) / 1e4, out), f_pen(x, params.num_dims)
+    out = jnp.sum(jnp.power(10.0, exp) * jnp.square(z))
+    return 0.1 * jnp.maximum(jnp.abs(z_hat[0]) / 1e4, out), f_pen(x)
 
 
 def rosenbrock(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Rosenbrock Function, original (Hansen et al., 2010, p. 40)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims - 1) < (params.num_dims - 1)
+    num_dims = x.shape[0]
 
     # params.x_opt is the true optimum, already scaled by 0.75 at sampling time
     # (COCO stores the scaled vector too: f_rosenbrock.c:86).
-    z = jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0) * (x - params.x_opt) + 1.0
+    z = jnp.maximum(1.0, jnp.sqrt(num_dims) / 8.0) * (x - params.x_opt) + 1.0
     z_i = z[:-1]
     z_ip1 = jnp.roll(z, -1)[:-1]
 
     out = 100.0 * jnp.square(jnp.square(z_i) - z_ip1) + jnp.square(z_i - 1)
-    return jnp.sum(out * mask), jnp.array(0.0)
+    return jnp.sum(out), jnp.array(0.0)
 
 
 def rosenbrock_rotated(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Rosenbrock Function, rotated (Hansen et al., 2010, p. 45)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims - 1) < (params.num_dims - 1)
+    num_dims = x.shape[0]
 
     # Official BBOB uses z = s*R*x + 1/2 with the optimum derived from R (norm
     # ~ sqrt(D)/2, always near the origin). This parameterization is verified
@@ -302,213 +235,172 @@ def rosenbrock_rotated(
     # official landscape. Kept deliberately: the optimum is placeable, and
     # params.x_opt is the argmin like everywhere else.
     z = (
-        jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0)
-        * (params.r @ (x - params.x_opt))
+        jnp.maximum(1.0, jnp.sqrt(num_dims) / 8.0) * (params.r @ (x - params.x_opt))
         + 1.0
     )
     z_i = z[:-1]
     z_ip1 = jnp.roll(z, -1)[:-1]
 
     out = 100.0 * jnp.square(jnp.square(z_i) - z_ip1) + jnp.square(z_i - 1)
-    return jnp.sum(out * mask), jnp.array(0.0)
+    return jnp.sum(out), jnp.array(0.0)
 
 
 def ellipsoidal_rotated(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Ellipsoidal Function (Hansen et al., 2010, p. 50)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     z = params.r @ (x - params.x_opt)
     z = transform_osz(z)
 
-    exp = (
-        jnp.where(
-            params.num_dims > 1,
-            6.0 * jnp.arange(max_num_dims) / (params.num_dims - 1),
-            0.0,
-        )
-        * mask
-    )
+    exp = 6.0 * jnp.arange(num_dims) / (num_dims - 1)
     out = jnp.power(10.0, exp) * jnp.square(z)
-    return jnp.sum(out * mask), jnp.array(0.0)
+    return jnp.sum(out), jnp.array(0.0)
 
 
 def discus(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Discus Function (Hansen et al., 2010, p. 55)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
-
     z = params.r @ (x - params.x_opt)
     z = transform_osz(z)
 
     z_squared = jnp.square(z)
     out = z_squared.at[0].multiply(10**6)
-    return jnp.sum(out * mask), jnp.array(0.0)
+    return jnp.sum(out), jnp.array(0.0)
 
 
 def bent_cigar(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Bent Cigar Function (Hansen et al., 2010, p. 60)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
-
     z = params.r @ (x - params.x_opt)
-    z = transform_asy(z, 0.5, params.num_dims)
+    z = transform_asy(z, 0.5)
     z = params.r @ z
 
     z_squared = jnp.square(z)
     out = z_squared.at[1:].multiply(10**6)
-    return jnp.sum(out * mask), jnp.array(0.0)
+    return jnp.sum(out), jnp.array(0.0)
 
 
 def sharp_ridge(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Sharp Ridge Function (Hansen et al., 2010, p. 65)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims - 1) < (params.num_dims - 1)
+    num_dims = x.shape[0]
 
     z = params.r @ (x - params.x_opt)
-    z = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z
+    z = _lambda_alpha_vector(10.0, num_dims) * z
     z = params.q @ z
 
     z_squared = jnp.square(z)
-    return z_squared[0] + 100 * jnp.sqrt(jnp.sum(z_squared[1:] * mask)), jnp.array(0.0)
+    return z_squared[0] + 100 * jnp.sqrt(jnp.sum(z_squared[1:])), jnp.array(0.0)
 
 
 def different_powers(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Different Powers Function (Hansen et al., 2010, p. 70)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     z = params.r @ (x - params.x_opt)
 
-    exp = (
-        jnp.where(
-            params.num_dims > 1,
-            2.0 + 4.0 * jnp.arange(max_num_dims) / (params.num_dims - 1),
-            2.0,
-        )
-        * mask
-    )
+    exp = 2.0 + 4.0 * jnp.arange(num_dims) / (num_dims - 1)
     out = jnp.power(jnp.abs(z), exp)
-    return jnp.sqrt(jnp.sum(out * mask)), jnp.array(0.0)
+    return jnp.sqrt(jnp.sum(out)), jnp.array(0.0)
 
 
 def rastrigin_rotated(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Rastrigin Function (Hansen et al., 2010, p. 75)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     z = params.r @ (x - params.x_opt)
-    z = transform_asy(transform_osz(z), 0.2, params.num_dims)
+    z = transform_asy(transform_osz(z), 0.2)
     z = params.q @ z
-    z = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z
+    z = _lambda_alpha_vector(10.0, num_dims) * z
     z = params.r @ z
 
     out_1 = jnp.cos(2 * jnp.pi * z)
     out_2 = jnp.square(z)
-    return 10 * (params.num_dims - jnp.sum(out_1 * mask)) + jnp.sum(
-        out_2 * mask
-    ), jnp.array(0.0)
+    return 10 * (num_dims - jnp.sum(out_1)) + jnp.sum(out_2), jnp.array(0.0)
 
 
 def weierstrass(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Weierstrass Function (Hansen et al., 2010, p. 80)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     z = params.r @ (x - params.x_opt)
     z = transform_osz(z)
     z = params.q @ z
-    z = _lambda_alpha_vector(0.01, max_num_dims, params.num_dims) * z
+    z = _lambda_alpha_vector(0.01, num_dims) * z
     z = params.r @ z
 
     out = jnp.sum(
         _WEIERSTRASS_HALF_POW_K
-        * jnp.cos(2 * jnp.pi * _WEIERSTRASS_THREE_POW_K * (z[:, None] + 0.5))
-        * mask[:, None]
+        * jnp.cos(2 * jnp.pi * _WEIERSTRASS_THREE_POW_K * (z[:, None] + 0.5))[:, None]
     )
-    return 10 * (out / params.num_dims - _WEIERSTRASS_F_0) ** 3, 10 * f_pen(
-        x, params.num_dims
-    ) / params.num_dims
+    return 10 * (out / num_dims - _WEIERSTRASS_F_0) ** 3, 10 * f_pen(x) / num_dims
 
 
 def schaffers_f7(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Schaffers F7 Function (Hansen et al., 2010, p. 85)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims - 1) < (params.num_dims - 1)
-
-    if max_num_dims == 1:
-        return jnp.array(0.0), jnp.array(0.0)
+    num_dims = x.shape[0]
 
     z = params.r @ (x - params.x_opt)
-    z = transform_asy(z, 0.5, params.num_dims)
+    z = transform_asy(z, 0.5)
     z = params.q @ z
-    z = _lambda_alpha_vector(10.0, max_num_dims, params.num_dims) * z
+    z = _lambda_alpha_vector(10.0, num_dims) * z
 
     z_i = z[:-1]
     z_ip1 = jnp.roll(z, -1)[:-1]
     s = jnp.sqrt(jnp.square(z_i) + jnp.square(z_ip1))
 
-    out = jnp.sum((jnp.sqrt(s) + jnp.sqrt(s) * jnp.sin(50 * s**0.2) ** 2) * mask)
+    out = jnp.sum(jnp.sqrt(s) + jnp.sqrt(s) * jnp.sin(50 * s**0.2) ** 2)
     # The sum runs over D - 1 consecutive pairs; guard the degenerate D = 1.
-    num_pairs = jnp.where(params.num_dims > 1, params.num_dims - 1.0, 1.0)
-    return (out / num_pairs) ** 2, 10 * f_pen(x, params.num_dims)
+    num_pairs = num_dims - 1.0
+    return (out / num_pairs) ** 2, 10 * f_pen(x)
 
 
 def schaffers_f7_ill_conditioned(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Schaffers F7 Function, ill-conditioned (Hansen et al., 2010, p. 90)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims - 1) < (params.num_dims - 1)
-
-    if max_num_dims == 1:
-        return jnp.array(0.0), jnp.array(0.0)
+    num_dims = x.shape[0]
 
     z = params.r @ (x - params.x_opt)
-    z = transform_asy(z, 0.5, params.num_dims)
+    z = transform_asy(z, 0.5)
     z = params.q @ z
-    z = _lambda_alpha_vector(1000.0, max_num_dims, params.num_dims) * z
+    z = _lambda_alpha_vector(1000.0, num_dims) * z
 
     z_i = z[:-1]
     z_ip1 = jnp.roll(z, -1)[:-1]
     s = jnp.sqrt(jnp.square(z_i) + jnp.square(z_ip1))
 
-    out = jnp.sum((jnp.sqrt(s) + jnp.sqrt(s) * jnp.sin(50 * s**0.2) ** 2) * mask)
+    out = jnp.sum(jnp.sqrt(s) + jnp.sqrt(s) * jnp.sin(50 * s**0.2) ** 2)
     # The sum runs over D - 1 consecutive pairs; guard the degenerate D = 1.
-    num_pairs = jnp.where(params.num_dims > 1, params.num_dims - 1.0, 1.0)
-    return (out / num_pairs) ** 2, 10 * f_pen(x, params.num_dims)
+    num_pairs = num_dims - 1.0
+    return (out / num_pairs) ** 2, 10 * f_pen(x)
 
 
 def griewank_rosenbrock(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Composite Griewank-Rosenbrock Function F8F2 (Hansen et al., 2010, p. 95)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims - 1) < (params.num_dims - 1)
+    num_dims = x.shape[0]
 
     # Same deliberate parameterization as rosenbrock_rotated: official BBOB has
     # z = s*R*x + 1/2 with an R-derived optimum; this form is verified exactly
     # equivalent (x_opt = R^T (0.5/s) 1 reproduces it bit-for-bit) and makes
     # params.x_opt the argmin.
     z = (
-        jnp.maximum(1.0, jnp.sqrt(params.num_dims) / 8.0)
-        * (params.r @ (x - params.x_opt))
+        jnp.maximum(1.0, jnp.sqrt(num_dims) / 8.0) * (params.r @ (x - params.x_opt))
         + 1.0
     )
     z_i = z[:-1]
@@ -516,15 +408,14 @@ def griewank_rosenbrock(
 
     s = 100.0 * jnp.square(jnp.square(z_i) - z_ip1) + jnp.square(z_i - 1)
     out = s / 4000.0 - jnp.cos(s)
-    return 10.0 * jnp.sum(out * mask) / (params.num_dims - 1) + 10, jnp.array(0.0)
+    return 10.0 * jnp.sum(out) / (num_dims - 1) + 10, jnp.array(0.0)
 
 
 def schwefel(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Schwefel Function (Hansen et al., 2010, p. 100)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     # params.x_opt is the true optimum: +-4.2096874633/2 per coordinate, applied
     # by the sampling convention. (The C source carries ...4637 in one literal;
@@ -538,23 +429,21 @@ def schwefel(
     x_opt_im1 = jnp.roll(x_opt, 1).at[0].set(0.0)
     z_hat = x_hat_i + 0.25 * (x_hat_im1 - 2 * jnp.abs(x_opt_im1))
     z = 100 * (
-        _lambda_alpha_vector(10.0, max_num_dims, params.num_dims)
-        * (z_hat - 2 * jnp.abs(x_opt))
+        _lambda_alpha_vector(10.0, num_dims) * (z_hat - 2 * jnp.abs(x_opt))
         + 2 * jnp.abs(x_opt)
     )
 
     out = z * jnp.sin(jnp.sqrt(jnp.abs(z)))
-    return -(
-        jnp.sum(out * mask) / (100.0 * params.num_dims)
-    ) + 4.189828872724339, 100 * f_pen(z / 100, params.num_dims)
+    return -(jnp.sum(out) / (100.0 * num_dims)) + 4.189828872724339, 100 * f_pen(
+        z / 100
+    )
 
 
 def gallagher_101_me(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Gallagher's Gaussian 101-me Peaks Function (Hansen et al., 2010, p. 105)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     num_optima = 101
     # The peak layout is instance data, drawn from the instance's own key.
@@ -577,22 +466,15 @@ def gallagher_101_me(
     alpha = alpha.at[1:].set(alpha_permuted)
     # C_i is diagonal, so carry the diagonal alone: (num_optima, D) rather than
     # (num_optima, D, D).
-    c = jax.vmap(
-        lambda alpha: (
-            _lambda_alpha_vector(alpha, max_num_dims, params.num_dims) / alpha**0.25
-        )
-    )(alpha)
+    c = jax.vmap(lambda alpha: _lambda_alpha_vector(alpha, num_dims) / alpha**0.25)(
+        alpha
+    )
 
     key, subkey = jax.random.split(key)
     keys = jax.random.split(subkey, num_optima)
 
     def permute_diag(c_i, key):
-        # `p=mask` restricts the permutation to the active coordinates. It also
-        # fixes how many random bits are drawn, so replacing it (with None, or
-        # with a float array) silently changes every layout.
-        perm = jax.random.choice(
-            key, jnp.arange(max_num_dims), shape=(max_num_dims,), replace=False, p=mask
-        )
+        perm = jax.random.permutation(key, num_dims)
         return c_i[perm]
 
     c = jax.vmap(permute_diag)(c, keys)
@@ -602,28 +484,27 @@ def gallagher_101_me(
         subkey,
         shape=(
             num_optima,
-            max_num_dims,
+            num_dims,
         ),
         minval=-5.0,
         maxval=5.0,
     )
-    y = y.at[0].set(params.x_opt) * mask
+    y = y.at[0].set(params.x_opt)
 
     # (x - y_i)^T R^T C_i R (x - y_i) = z^T C_i z with z = R(x - y_i), and C_i
     # diagonal makes that sum(c_i * z**2). All peaks at once: one (num_optima, D)
     # by (D, D) matmul instead of three matrix-vector products per peak.
     z = (x - y) @ params.r.T
-    out = jnp.sum(c * jnp.square(z) * mask, axis=-1)
-    out = w * jnp.exp(-out / (2 * params.num_dims))
-    return jnp.square(transform_osz(10.0 - jnp.max(out))), f_pen(x, params.num_dims)
+    out = jnp.sum(c * jnp.square(z), axis=-1)
+    out = w * jnp.exp(-out / (2 * num_dims))
+    return jnp.square(transform_osz(10.0 - jnp.max(out))), f_pen(x)
 
 
 def gallagher_21_hi(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Gallagher's Gaussian 21-hi Peaks Function (Hansen et al., 2010, p. 110)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     # params.x_opt is the true optimum, already scaled by 0.98 at sampling time.
     x_opt = params.x_opt
@@ -646,22 +527,15 @@ def gallagher_21_hi(
     alpha = alpha.at[1:].set(alpha_permuted)
     # C_i is diagonal, so carry the diagonal alone: (num_optima, D) rather than
     # (num_optima, D, D).
-    c = jax.vmap(
-        lambda alpha: (
-            _lambda_alpha_vector(alpha, max_num_dims, params.num_dims) / alpha**0.25
-        )
-    )(alpha)
+    c = jax.vmap(lambda alpha: _lambda_alpha_vector(alpha, num_dims) / alpha**0.25)(
+        alpha
+    )
 
     key, subkey = jax.random.split(key)
     keys = jax.random.split(subkey, num_optima)
 
     def permute_diag(c_i, key):
-        # `p=mask` restricts the permutation to the active coordinates. It also
-        # fixes how many random bits are drawn, so replacing it (with None, or
-        # with a float array) silently changes every layout.
-        perm = jax.random.choice(
-            key, jnp.arange(max_num_dims), shape=(max_num_dims,), replace=False, p=mask
-        )
+        perm = jax.random.permutation(key, num_dims)
         return c_i[perm]
 
     c = jax.vmap(permute_diag)(c, keys)
@@ -671,28 +545,27 @@ def gallagher_21_hi(
         subkey,
         shape=(
             num_optima,
-            max_num_dims,
+            num_dims,
         ),
         minval=-4.9,
         maxval=4.9,
     )
-    y = y.at[0].set(x_opt) * mask
+    y = y.at[0].set(x_opt)
 
     # (x - y_i)^T R^T C_i R (x - y_i) = z^T C_i z with z = R(x - y_i), and C_i
     # diagonal makes that sum(c_i * z**2). All peaks at once: one (num_optima, D)
     # by (D, D) matmul instead of three matrix-vector products per peak.
     z = (x - y) @ params.r.T
-    out = jnp.sum(c * jnp.square(z) * mask, axis=-1)
-    out = w * jnp.exp(-out / (2 * params.num_dims))
-    return jnp.square(transform_osz(10.0 - jnp.max(out))), f_pen(x, params.num_dims)
+    out = jnp.sum(c * jnp.square(z), axis=-1)
+    out = w * jnp.exp(-out / (2 * num_dims))
+    return jnp.square(transform_osz(10.0 - jnp.max(out))), f_pen(x)
 
 
 def katsuura(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Katsuura Function (Hansen et al., 2010, p. 115)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     # 32 terms, exactly as official. The powers are computed in floating point
     # (2.0**j), so there is no integer overflow; in float32 the j > 24 terms are
@@ -701,7 +574,7 @@ def katsuura(
     num_terms = 32
 
     z = params.r @ (x - params.x_opt)
-    z = _lambda_alpha_vector(100.0, max_num_dims, params.num_dims) * z
+    z = _lambda_alpha_vector(100.0, num_dims) * z
     z = params.q @ z
 
     two_pow_j = jnp.power(2.0, jnp.arange(1, num_terms + 1))
@@ -709,22 +582,21 @@ def katsuura(
         jnp.abs(two_pow_j * z[:, None] - jnp.round(two_pow_j * z[:, None])) / two_pow_j,
         axis=1,
     )
-    prod = jnp.prod(1.0 + jnp.arange(1, max_num_dims + 1) * sum_term * mask)
-    return (10.0 / params.num_dims**2) * (
-        jnp.power(prod, 10.0 / params.num_dims**1.2) - 1.0
-    ), f_pen(x, params.num_dims)
+    prod = jnp.prod(1.0 + jnp.arange(1, num_dims + 1) * sum_term)
+    return (10.0 / num_dims**2) * (jnp.power(prod, 10.0 / num_dims**1.2) - 1.0), f_pen(
+        x
+    )
 
 
 def lunacek(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Lunacek bi-Rastrigin Function (Hansen et al., 2010, p. 120)."""
-    max_num_dims = x.shape[0]
-    mask = jnp.arange(max_num_dims) < params.num_dims
+    num_dims = x.shape[0]
 
     mu_0 = 2.5
     d = 1.0
-    s = 1.0 - 1.0 / (2.0 * jnp.sqrt(params.num_dims + 20.0) - 8.2)
+    s = 1.0 - 1.0 / (2.0 * jnp.sqrt(num_dims + 20.0) - 8.2)
     mu_1 = -jnp.sqrt((mu_0**2 - d) / s)
 
     # params.x_opt is the true optimum: +-mu_0/2 per coordinate, applied by the
@@ -733,15 +605,15 @@ def lunacek(
     x_hat = 2.0 * jnp.sign(x_opt) * x
 
     z = params.r @ (x_hat - mu_0)
-    z = _lambda_alpha_vector(100.0, max_num_dims, params.num_dims) * z
+    z = _lambda_alpha_vector(100.0, num_dims) * z
     z = params.q @ z
 
-    s_1 = jnp.sum(jnp.square(x_hat - mu_0) * mask)
-    s_2 = jnp.sum(jnp.square(x_hat - mu_1) * mask)
-    s_3 = jnp.sum(jnp.cos(2 * jnp.pi * z) * mask)
-    return jnp.minimum(s_1, d * params.num_dims + s * s_2) + 10.0 * (
-        params.num_dims - s_3
-    ), 10.0**4 * f_pen(x, params.num_dims)
+    s_1 = jnp.sum(jnp.square(x_hat - mu_0))
+    s_2 = jnp.sum(jnp.square(x_hat - mu_1))
+    s_3 = jnp.sum(jnp.cos(2 * jnp.pi * z))
+    return jnp.minimum(s_1, d * num_dims + s * s_2) + 10.0 * (
+        num_dims - s_3
+    ), 10.0**4 * f_pen(x)
 
 
 def _x_opt_identity(x_opt: jax.Array) -> jax.Array:
