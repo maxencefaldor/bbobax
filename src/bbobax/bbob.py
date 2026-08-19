@@ -26,6 +26,8 @@ Schaffers conditionings, the two Gallagher peak counts -- that relationship is
 a subclass with different class attributes, so the math is written once.
 """
 
+from typing import Any
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -762,7 +764,7 @@ BBOB_PROBLEMS: dict[str, type[BBOBProblem]] = {
 DIMENSIONS: tuple[int, ...] = (2, 3, 5, 10, 20, 40)
 
 
-def bbob_suite(names: list[str] | None = None, **kwargs) -> dict[str, BBOBProblem]:
+def bbob_suite(names: list[str] | None = None, **kwargs: Any) -> dict[str, BBOBProblem]:
     """Build the standard BBOB functions as individual problems.
 
     Args:

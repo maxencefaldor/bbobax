@@ -185,6 +185,17 @@ class RandomProjection(_Projection):
     over the search box (`sum_i |P_ji| * max|x|`), so the descriptor lands in
     `[-1, 1]` exactly and the bound is achieved at a box corner.
 
+    **Exact is not typical.** The bound is attained only at one aligned box
+    corner; a random box point projects to a value whose standard deviation is
+    on the order of `1 / sqrt(num_dims)` of it (about a quarter at D = 10,
+    shrinking with dimension -- measure concentration). A tessellation over
+    the full `[-1, 1]^k` therefore spends most of its cells on rarely reached
+    corners: in the descriptor-family study, MAP-Elites filled 32 of 128 CVT
+    cells under this family at D = 10 after 512 generations, while
+    `FourierProjection` -- whose cosine concentrates mass toward the box faces
+    -- filled all 128. Bounds are ground truth; reachable mass is a property
+    of the family.
+
     This descriptor is smooth and Lipschitz: a small change in `x` gives a
     small change in the descriptor, and the reachable set is a linear image of
     the box. Real-world QD is frequently neither, so treat it as the baseline

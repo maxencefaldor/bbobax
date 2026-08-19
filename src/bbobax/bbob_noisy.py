@@ -27,6 +27,8 @@ and a severity. `Noisy` composes those three, so nothing here restates a
 function that already exists.
 """
 
+from typing import Any
+
 import jax
 
 from .bbob import (
@@ -67,7 +69,7 @@ class Noisy(BBOBProblem):
     # own (`defaultboundaryhandling(x, 100.)` on all three noisy mixins).
     penalty_factor: float = 100.0
 
-    def __init__(self, problem: BBOBProblem, noise_model: NoiseModel, **kwargs):
+    def __init__(self, problem: BBOBProblem, noise_model: NoiseModel, **kwargs: Any):
         """Initialize the noisy problem."""
         super().__init__(num_dims=problem.num_dims, noise_model=noise_model, **kwargs)
         self.problem = problem
@@ -152,7 +154,7 @@ BBOB_NOISY_PROBLEMS: dict[str, tuple[type[BBOBProblem], str]] = {
 
 
 def bbob_noisy_suite(
-    names: list[str] | None = None, num_dims: int = 10, **kwargs
+    names: list[str] | None = None, num_dims: int = 10, **kwargs: Any
 ) -> dict[str, Noisy]:
     """Build the bbob-noisy suite, f101-f130.
 

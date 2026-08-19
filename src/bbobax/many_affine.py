@@ -29,6 +29,8 @@ component contributes exactly `clip(0, 1e-12, ...) -> 1e-12`, hence
 Add it back to compare against a reference value.
 """
 
+from typing import Any
+
 import jax
 import jax.numpy as jnp
 
@@ -80,7 +82,7 @@ class ManyAffine(BBOBProblem):
     # is what makes `log10` safe at a component's own optimum.
     value_range: tuple[float, float] = (1e-12, 1e20)
 
-    def __init__(self, num_dims: int = 10, **kwargs):
+    def __init__(self, num_dims: int = 10, **kwargs: Any):
         """Initialize the problem, and the 24 it is built from."""
         super().__init__(num_dims=num_dims, **kwargs)
         self.components = tuple(
