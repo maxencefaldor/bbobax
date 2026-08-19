@@ -1,0 +1,3 @@
+# Noisy suite
+
+::: bbobax.noisy

@@ -17,6 +17,7 @@ A high-performance reimplementation of the [COCO](https://coco-platform.org/) (C
 *   **Standard BBOB**: Includes standard single-objective BBOB functions (noiseless).
 *   **Noise Support**: Gaussian, uniform and Cauchy noise models, verified against the official formulas.
 *   **Quality-Diversity (QD)**: Any of the 24 functions composes with any descriptor.
+*   **Noisy suite**: `noisy_suite()` builds f101–f130, the official noisy BBOB problems.
 *   **Many-Affine BBOB**: `ManyAffine` combines all 24 under a sparse weight vector, turning the suite into a continuous space of problems.
 *   **Flexible API**: Easy integration with existing JAX-based evolutionary computation libraries (e.g., EvoJAX, evosax).
 
@@ -69,12 +70,12 @@ Deliberate, documented deviations from COCO (design choices, not accidents):
 *   **There is no evaluation state.** All 24 functions are memoryless: the
     value at `x` does not depend on when `x` was asked. A dynamic benchmark
     would be a different contract, not a parameter these 24 carry and ignore.
-*   **`Additive`** noise is a bbobax extension with no COCO counterpart, and
-    is deliberately not stabilized.
-*   **The noisy suite (f101–f130) is not reproduced.** bbobax composes a noise
-    model onto any of the 24; official's noisy suite additionally swaps every
-    function's boundary handling for a uniform factor of 100 and pairs
-    specific functions with specific severities.
+*   **The noisy suite (f101–f130) is `noisy_suite()`**, and is not just "the 24
+    plus noise": it replaces every function's boundary handling with a uniform
+    factor of 100, pins each problem to one of the paper's two severities, and
+    reparameterizes two of the bases (f116–f118 use an ellipsoid of
+    conditioning 1e4 where f10 has 1e6; f125–f127 scale Griewank-Rosenbrock by
+    1 where f19 uses 10).
 
 ## Which floating-point precision?
 

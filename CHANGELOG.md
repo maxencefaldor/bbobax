@@ -146,6 +146,33 @@ transforms it sits with and named for the paper's symbol as they are.
   all five noise models with stabilization, so ~80% of instances were noisy and
   even the noiseless path was biased by +1.01e-8.
 
+### Added — the noisy suite, f101-f130
+
+`noisy_suite()` builds the thirty official noisy problems. It is not "the 24
+plus noise", and the two things that make it so were read out of the vendored
+reference rather than assumed:
+
+- **Boundary handling is uniform.** Every noisy problem uses
+  `defaultboundaryhandling(x, 100)`, replacing whatever factor its noiseless
+  counterpart used -- including the several that have no penalty at all.
+- **Two of the bases are reparameterized.** f116-f118 use an ellipsoid of
+  conditioning 1e4 where f10 has 1e6, and f125-f127 scale Griewank-Rosenbrock
+  by 1 where f19 uses 10. (`GriewankRosenbrock.facftrue` is now a class
+  attribute, since the reference names it.)
+
+Each problem is pinned to one of the paper's two severities, so a number here
+is comparable to a published f1xx number.
+
+### Removed — the `Additive` noise model
+
+It applied noise at an *absolute* scale (`f + std * N(0, 1)`) to functions
+whose values span eight orders of magnitude, so `std = 0.1` was 1% of
+`katsuura`'s whole range and 1e-9 of `bent_cigar`'s -- the parameter meant
+something different on every one of the 24, which is not a benchmark axis. It
+was also unstabilized, putting a hard floor under BBOB's 1e-8 target. All three
+official models are relative to the value instead; `Gaussian` with a small beta
+is the scale-aware, stabilized version of what it was reaching for.
+
 ### Added — Many-Affine BBOB
 
 `ManyAffine` combines all 24 under a sparse weight vector in log space, following

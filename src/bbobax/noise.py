@@ -3,8 +3,7 @@
 The three BBOB noise models (Gaussian, uniform, Cauchy) follow Hansen, Finck,
 Ros, Auger, "Real-Parameter Black-Box Optimization Benchmarking 2009: Noisy
 Functions Definitions" (INRIA RR-6869) and are verified against the official
-`bbobbenchmarks.py` formulas in `tests/test_noise.py`. `Additive` is a bbobax
-extension with no COCO counterpart.
+`bbobbenchmarks.py` formulas in `tests/test_noise.py`.
 
 A noise model has the same shape of contract as a problem -- `sample` draws the
 instance's settings, `apply` disturbs one value -- and a problem holds one,
@@ -19,10 +18,8 @@ Two things to know:
 - **Stabilization is part of the three official models, not an option.** Each
   of `fGauss`, `fUniform` and `fCauchy` ends by adding `1.01 * 1e-8` and
   returning the *undisturbed* value below that tolerance, unconditionally, so
-  noise can never stop an algorithm reaching the target precision. `Noiseless`
-  has none (official's noise-free functions return the value untouched), and
-  neither does `Additive`, which is not a BBOB model and would only acquire a
-  spurious floor from it.
+  noise can never stop an algorithm reaching the target precision.
+  `Noiseless` has none, as official's noise-free functions do not.
 
 **Severity is continuous here, and that is a deviation.** The paper defines two
 discrete severities per model (moderate/severe) and the noisy suite pins each
@@ -341,48 +338,6 @@ class Cauchy:
 
 
 @dataclass
-class AdditiveParams:
-    """Settings of the additive model."""
-
-    std: jax.Array
-
-
-class Additive:
-    """Plain additive Gaussian noise: `f + std * N(0, 1)`.
-
-    A bbobax extension with no COCO counterpart, for observation noise that
-    does not scale with the value. Deliberately *not* stabilized: the 1.01e-8
-    floor is a convention of the three BBOB models, and adding it here would
-    shift every value this model produces for no upstream reason.
-    """
-
-    name = "additive"
-
-    def __init__(self, std_range: tuple[float, float] = (0.0, 0.1)):
-        """Initialize the model.
-
-        Args:
-            std_range: Range the standard deviation is drawn from.
-
-        """
-        self.std_range = std_range
-
-    def sample(self, key: jax.Array, num_dims: int) -> AdditiveParams:
-        """Sample the standard deviation."""
-        return AdditiveParams(
-            std=jax.random.uniform(
-                key, minval=self.std_range[0], maxval=self.std_range[1]
-            )
-        )
-
-    def apply(
-        self, key: jax.Array, value: jax.Array, params: AdditiveParams
-    ) -> jax.Array:
-        """Disturb one value."""
-        return value + params.std * jax.random.normal(key, shape=value.shape)
-
-
-@dataclass
 class MixtureParams:
     """Settings of `Mixture`: which model fired, and every model's settings."""
 
@@ -463,6 +418,6 @@ class Mixture:
 # `NoiseModel` is a protocol, and a protocol's *data* members (here `name`) are
 # not reachable through `type[NoiseModel]`. Inference keeps each concrete class,
 # so the registry stays introspectable and every entry satisfies the protocol.
-_MODELS = (Noiseless, Gaussian, Uniform, Cauchy, Additive)
+_MODELS = (Noiseless, Gaussian, Uniform, Cauchy)
 
 NOISE_MODELS = {model.name: model for model in _MODELS}

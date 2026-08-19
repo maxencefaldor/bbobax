@@ -83,6 +83,13 @@ class BBOBProblem:
     Subclasses supply `_value`, and override `_sample_x_opt` when their own
     definition constrains where the optimum can be.
 
+    **Every default here is COCO's**, not a neutral choice: the box is
+    [-5, 5]^D, the optimum is drawn from [-4, 4]^D, rotations are on, and
+    nothing clips because BBOB handles the boundary with an in-function
+    penalty. A problem built with the defaults is the noiseless bbob suite's,
+    and the deviations from COCO are listed in the README rather than hidden in
+    a signature.
+
     A base class, where `NoiseModel` and `Descriptor` are protocols, because
     the two cases are genuinely different. Those two share only a contract --
     `Gaussian.sample` and `Cauchy.sample` have nothing in common -- so there

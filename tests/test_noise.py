@@ -17,7 +17,6 @@ from bbobax.functions import DIMENSIONS, Sphere
 from bbobax.noise import (
     NOISE_MODELS,
     TARGET_PRECISION,
-    Additive,
     Cauchy,
     Gaussian,
     Mixture,
@@ -45,7 +44,6 @@ def test_registry_is_keyed_by_each_model_name():
         "gaussian",
         "uniform",
         "cauchy",
-        "additive",
     }
     for name, model_class in NOISE_MODELS.items():
         assert model_class.name == name
@@ -174,19 +172,6 @@ def test_official_models_never_block_the_target(model):
         assert float(model.apply(jax.random.key(k), tiny, params)) == float(tiny)
 
 
-def test_additive_is_a_bbobax_extension_and_is_not_stabilized():
-    """`f + std * N(0,1)`, with no 1.01e-8 floor: it is not a BBOB model."""
-    model = Additive(std_range=(0.1, 0.1))
-    params = model.sample(jax.random.key(0), 5)
-    key = jax.random.key(5)
-    f = jnp.array(1e-12)
-
-    normal = float(jax.random.normal(key, shape=f.shape))
-    np.testing.assert_allclose(
-        float(model.apply(key, f, params)), 1e-12 + 0.1 * normal, rtol=1e-12
-    )
-
-
 @pytest.mark.parametrize("name", sorted(NOISE_MODELS))
 def test_every_model_composes_onto_a_problem(name):
     """A problem holds one model; evaluation stays jittable and vmappable."""
@@ -205,7 +190,7 @@ def test_every_model_composes_onto_a_problem(name):
     assert jnp.all(jnp.isfinite(results.fitness))
 
 
-@pytest.mark.parametrize("name", ["gaussian", "uniform", "cauchy", "additive"])
+@pytest.mark.parametrize("name", ["gaussian", "uniform", "cauchy"])
 def test_noise_actually_disturbs(name):
     """A noisy problem is not deterministic in the evaluation key."""
     problem = Sphere(num_dims=4, noise_model=NOISE_MODELS[name]())

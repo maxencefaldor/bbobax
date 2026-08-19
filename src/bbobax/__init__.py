@@ -32,7 +32,6 @@ from .functions import (
 from .many_affine import ManyAffine
 from .noise import (
     NOISE_MODELS,
-    Additive,
     Cauchy,
     Gaussian,
     Mixture,
@@ -40,6 +39,7 @@ from .noise import (
     NoiseModel,
     Uniform,
 )
+from .noisy import NOISY_PROBLEMS, Noisy, noisy_suite
 from .problem import BBOBEval, BBOBParams, BBOBProblem
 from .qd import Descriptor, QDEval, QDParams, QDProblem, RandomProjection
 
@@ -74,7 +74,10 @@ __all__ = [
     "Gallagher21Hi",
     "Katsuura",
     "Lunacek",
-    # Built from the 24, rather than one of them
+    # Suites built from the 24, rather than one of them
+    "Noisy",
+    "NOISY_PROBLEMS",
+    "noisy_suite",
     "ManyAffine",
     # Quality-Diversity, composed onto a problem
     "QDProblem",
@@ -87,7 +90,6 @@ __all__ = [
     "Gaussian",
     "Uniform",
     "Cauchy",
-    "Additive",
     "Mixture",
     # The data types
     "BBOBParams",

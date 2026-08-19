@@ -512,6 +512,10 @@ class GriewankRosenbrock(BBOBProblem):
 
     name = "griewank_rosenbrock"
 
+    # Overall scale of the composition (bbobbenchmarks: `facftrue`). The noisy
+    # suite's f125-f127 are this same function at 1 rather than 10.
+    facftrue: float = 10.0
+
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
         # Same deliberate parameterization as RosenbrockRotated: official BBOB
         # has z = s*R*x + 1/2 with an R-derived optimum; this form is verified
@@ -525,7 +529,7 @@ class GriewankRosenbrock(BBOBProblem):
         s = 100.0 * jnp.square(jnp.square(z_i) - z_ip1) + jnp.square(z_i - 1)
         out = jnp.sum(s / 4000.0 - jnp.cos(s))
 
-        value = 10.0 * out / (self.num_dims - 1) + 10
+        value = self.facftrue * out / (self.num_dims - 1) + self.facftrue
         return value, jnp.array(0.0)
 
 
