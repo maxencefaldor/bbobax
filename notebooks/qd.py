@@ -574,8 +574,7 @@ class MAPElites(QDAlgorithm):
 
 
 if __name__ == "__main__":
-    from bbobax import QDBBOB
-    from bbobax.descriptor_fns import get_random_projection_descriptor
+    from bbobax import QDProblem, RandomProjection, Sphere
 
     # Configuration
     seed = 1
@@ -583,19 +582,13 @@ if __name__ == "__main__":
     num_generations = 100
     dim = 2
 
-    # Setup Task
-    bbob = QDBBOB(
-        num_dims=dim,
-        fitness_fn="sphere",
-        descriptor_fn=get_random_projection_descriptor(),
-        descriptor_size=2,
-    )
+    # Setup the problem: a function paired with a descriptor
+    bbob = QDProblem(Sphere(num_dims=dim), RandomProjection(descriptor_size=2))
 
     key = jax.random.key(seed)
     key_bbob, key_init, key_qd, key_pop = jax.random.split(key, 4)
 
     bbob_params = bbob.sample(key_bbob)
-    bbob_state = bbob.init(bbob_params)
 
     # Solution template
     solution_template = jnp.zeros((dim,))
@@ -605,13 +598,10 @@ if __name__ == "__main__":
     initial_population = jax.vmap(bbob.sample_x)(keys)
 
     # Evaluate initial population to get fitness/descriptor for init
-    fitness_fn = jax.vmap(bbob.evaluate, in_axes=(0, 0, None, None))
+    fitness_fn = jax.vmap(bbob.evaluate, in_axes=(0, 0, None))
     eval_keys = jax.random.split(key_pop, pop_size)
 
-    bbob_state_batch, bbob_eval = fitness_fn(
-        eval_keys, initial_population, bbob_state, bbob_params
-    )
-    bbob_state = jax.tree.map(lambda x: x[0], bbob_state_batch)
+    bbob_eval = fitness_fn(eval_keys, initial_population, bbob_params)
 
     # Algorithms to test
     algorithms = {
@@ -656,10 +646,7 @@ if __name__ == "__main__":
 
             # Evaluate
             eval_keys = jax.random.split(key_eval, pop_size)
-            bbob_state_batch, bbob_eval_gen = fitness_fn(
-                eval_keys, population, bbob_state, bbob_params
-            )
-            bbob_state = jax.tree.map(lambda x: x[0], bbob_state_batch)
+            bbob_eval_gen = fitness_fn(eval_keys, population, bbob_params)
 
             # Tell
             qd_state, metrics = qd.tell(
