@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.3.0
+
+Each of the 24 functions is now a class satisfying one protocol. **This release
+changes the API**; the numbers are unchanged except where noted, and the
+alignment suite still passes at 1e-9 relative against official BBOB.
+
+### Changed — a problem is an object
+
+- `BBOB("sphere", num_dims=10)` becomes `Sphere(num_dims=10)`. Every function
+  is a `BBOBProblem` subclass supplying `_value`; `BBOB_FNS` becomes
+  `BBOB_PROBLEMS`, mapping the same names to classes. `suite()` is unchanged.
+- **Instance generation is per function.** A function whose definition
+  constrains its optimum overrides `_sample_x_opt` and draws what it actually
+  needs, rather than a uniform draw being reshaped afterwards.
+- **`QDBBOB` becomes `QDProblem`, composed rather than inherited**: it pairs
+  any problem with any `Descriptor`, so a descriptor is no longer bound to a
+  function. `get_random_projection_descriptor()` becomes the `RandomProjection`
+  descriptor. `QDBBOBParams` becomes `QDParams(problem, descriptor)`.
+- **`BBOBState` is gone, and `evaluate` no longer takes or returns it**:
+  `evaluate(key, x, params) -> BBOBEval`. All 24 functions are memoryless and
+  all 24 ignored it. `init()` is gone with it.
+- **`DIMENSIONS`** records COCO's own dimension set, `(2, 3, 5, 10, 20, 40)`.
+- Modules follow: `bbob`/`fitness_fns`/`descriptor_fns` become
+  `problem`/`functions`/`qd`.
+
+### Fixed — noise stabilization was optional, and off
+
+In official BBOB the `+1.01 * 1e-8` offset and below-tolerance passthrough are
+*inside* `fGauss`, `fUniform` and `fCauchy`, applied unconditionally. bbobax had
+them as `use_stabilization`, a flag on the noise container defaulting to
+**False**, so every noisy model was missing them unless you knew to ask. They
+are now part of the three official models and cannot be switched off, while
+`Noiseless` (as in official) and `Additive` (a bbobax extension) have none.
+
+`tests/test_noise.py` now checks each model *by formula* against the official
+one transcribed into numpy, on the draws bbobax actually makes — the same
+approach `tests/test_alignment.py` takes for the functions.
+
+### Changed — a noise model is an object too
+
+- `NoiseModel(noise_model_names=..., noise_ranges=..., use_stabilization=...)`
+  becomes one model per class: `Noiseless`, `Gaussian`, `Uniform`, `Cauchy`,
+  `Additive`, each satisfying the `Noise` protocol and owning its own parameter
+  type. A problem holds one: `Sphere(noise=Gaussian())`.
+- **The `lax.switch` over noise models is gone.** Under `vmap` with a varying
+  `noise_id` it evaluated every model for every solution — the same cost the
+  function redesign removed. `NoiseParams` no longer carries all five models'
+  settings at once, either; each model draws only what it uses.
+- Severity ranges move onto the model that uses them
+  (`Gaussian(beta_range=...)`), replacing the `DEFAULT_RANGES` dictionary.
+
+### Changed — numbers
+
+- `linear_slope`, `schwefel` and `lunacek` draw the sign of each optimum
+  coordinate directly instead of taking the sign of a uniform draw. The
+  distribution of instances is identical; the specific instance drawn from a
+  given key is not.
+- Any use of the noise models now includes the stabilization they were missing.
+  The noiseless suite — the default, and what `qd` uses — is unaffected.
+
 ## 0.2.0
 
 Verified against official BBOB, and restructured to match how COCO defines a

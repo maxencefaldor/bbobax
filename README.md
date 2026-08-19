@@ -15,7 +15,7 @@ A high-performance reimplementation of the [COCO](https://coco-platform.org/) (C
 *   **JAX-based**: Fully differentiable (where applicable) and JIT-compilable.
 *   **Hardware Acceleration**: Run benchmarks on GPUs and TPUs for massive speedups.
 *   **Standard BBOB**: Includes standard single-objective BBOB functions (noiseless).
-*   **Noise Support**: Configurable noise models (Gaussian, Uniform, Cauchy, etc.) for robust optimization benchmarking.
+*   **Noise Support**: Gaussian, uniform and Cauchy noise models, verified against the official formulas.
 *   **Quality-Diversity (QD)**: Any of the 24 functions composes with any descriptor.
 *   **Flexible API**: Easy integration with existing JAX-based evolutionary computation libraries (e.g., EvoJAX, evosax).
 
@@ -33,13 +33,16 @@ Guarantees you can rely on:
 *   `params.x_opt` is always the function's **true argmin**, so
     `f(params.x_opt) = f_opt` for all 24. Six functions constrain where their
     optimum may sit — a linear function is minimized on a corner, not inside
-    the box — and each declares that constraint itself by overriding
-    `_place_x_opt`, applied when the instance is drawn, exactly as COCO stores
-    the post-constraint optimum.
+    the box — and each draws its own optimum by overriding `_sample_x_opt`,
+    exactly as COCO stores the optimum its construction ends up at.
 *   Noise applies to the raw function value only; the boundary penalty and
     `f_opt` are added outside it, as the paper prescribes.
-*   The default problem is the plain **noiseless** suite with rotations on —
-    exactly COCO's noiseless BBOB. Noise is opt-in via `noise_config`.
+*   Noise is opt-in (`Sphere(noise=Gaussian())`); the default is the plain
+    **noiseless** suite with rotations on, exactly COCO's noiseless BBOB.
+*   The three official noise models **stabilize themselves**, as `fGauss`,
+    `fUniform` and `fCauchy` do: below the 1e-8 target precision the
+    undisturbed value comes back, so noise can never stop an algorithm
+    reaching the target. It is part of the model, not a setting.
 
 Deliberate, documented deviations from COCO (design choices, not accidents):
 
@@ -62,8 +65,12 @@ Deliberate, documented deviations from COCO (design choices, not accidents):
 *   **There is no evaluation state.** All 24 functions are memoryless: the
     value at `x` does not depend on when `x` was asked. A dynamic benchmark
     would be a different contract, not a parameter these 24 carry and ignore.
-*   The **`additive`** noise model is a bbobax extension with no COCO
-    counterpart.
+*   **`Additive`** noise is a bbobax extension with no COCO counterpart, and
+    is deliberately not stabilized.
+*   **The noisy suite (f101–f130) is not reproduced.** bbobax composes a noise
+    model onto any of the 24; official's noisy suite additionally swaps every
+    function's boundary handling for a uniform factor of 100 and pairs
+    specific functions with specific severities.
 
 ## Installation
 
