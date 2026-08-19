@@ -8,9 +8,9 @@ extension with no COCO counterpart.
 
 A noise model has the same shape of contract as a problem -- `sample` draws the
 instance's settings, `apply` disturbs one value -- and a problem holds one,
-statically. There is no dispatch over models: like the 24 functions, a noise
-model is chosen by holding the object, not by switching on an index, so nothing
-evaluates the branches it did not want.
+statically. Like the 24 functions, a model is chosen by holding the object
+rather than by switching on an index, so nothing evaluates the branches it did
+not want. `Mixture` is the one exception, and pays for itself in the open.
 
 Two things to know:
 
@@ -26,7 +26,9 @@ Two things to know:
 
 The paper defines two discrete severities per model (moderate/severe); bbobax
 samples the settings continuously across that span, so every model's default
-range runs from the moderate value to the severe one.
+range runs from the moderate value to the severe one. A fixed model is
+therefore not a fixed difficulty -- only the family is fixed. When one batch
+genuinely has to mix families, `Mixture` restores that and states its cost.
 """
 
 from typing import Any, Protocol, runtime_checkable
@@ -35,9 +37,22 @@ import jax
 import jax.numpy as jnp
 from flax.struct import dataclass
 
-#: The target precision BBOB measures against, and the floor the official noise
-#: models leave undisturbed (`bbobbenchmarks.py`: `tol = 1e-8`).
+# The target precision BBOB measures against, and the floor the official noise
+# models leave undisturbed (`bbobbenchmarks.py`: `tol = 1e-8`).
 TARGET_VALUE = 1e-8
+
+
+def _epsilon(value: jax.Array) -> float:
+    """Return the smallest positive number of `value`'s dtype.
+
+    The uniform and Cauchy models divide by a quantity that can be zero, and
+    the paper guards each with a literal (1e-99 and 1e-199). Both are exactly
+    0.0 in float32 -- JAX's default -- so the literal guards nothing unless
+    `jax_enable_x64` happens to be on. The smallest positive normal of the
+    working dtype guards in either precision, and in float64 it is 2e-308
+    against the paper's 1e-99: a difference no reachable value can resolve.
+    """
+    return float(jnp.finfo(value.dtype).tiny)
 
 
 def stabilize(value: jax.Array, noisy: jax.Array) -> jax.Array:
@@ -66,7 +81,7 @@ class Noise(Protocol):
     type. `sample` draws the instance's settings and `apply` disturbs one value.
     """
 
-    #: The model's name, and its key in `NOISE_MODELS`.
+    # The model's name, and its key in `NOISE_MODELS`.
     name: str
 
     def sample(self, key: jax.Array, num_dims: int) -> Any:
@@ -190,11 +205,6 @@ class Uniform:
 
     name = "uniform"
 
-    #: Guards division by zero only. The paper's 1e-99 is small enough never to
-    #: distort the ratio near the 1e-8 target-precision band; an earlier
-    #: version used 1e-8, which distorted it by up to 2x.
-    epsilon: float = 1e-99
-
     def __init__(
         self,
         alpha_range: tuple[float, float] = (0.01, 1.0),
@@ -228,7 +238,7 @@ class Uniform:
         key_beta, key_alpha = jax.random.split(key)
         scale = jnp.power(jax.random.uniform(key_beta, shape=value.shape), params.beta)
         blowup = jnp.power(
-            1e9 / (value + self.epsilon),
+            1e9 / (value + _epsilon(value)),
             params.alpha * jax.random.uniform(key_alpha, shape=value.shape),
         )
         noisy = value * scale * jnp.maximum(1.0, blowup)
@@ -252,9 +262,6 @@ class Cauchy:
     """
 
     name = "cauchy"
-
-    #: Guards division by zero in the Cauchy ratio, as the paper specifies.
-    epsilon: float = 1e-199
 
     def __init__(
         self,
@@ -290,7 +297,7 @@ class Cauchy:
         # paper's N(0,1)/|N(0,1)|. (An earlier version divided by
         # |Uniform(0,1)|, which has ~30% heavier tails and the wrong law.)
         cauchy = jax.random.normal(key_num, shape=value.shape) / (
-            jnp.abs(jax.random.normal(key_den, shape=value.shape)) + self.epsilon
+            jnp.abs(jax.random.normal(key_den, shape=value.shape)) + _epsilon(value)
         )
         noisy = value + params.alpha * jnp.maximum(0.0, 1000.0 + fires * cauchy)
         return stabilize(value, noisy)
@@ -338,7 +345,81 @@ class Additive:
         return value + params.std * jax.random.normal(key, shape=value.shape)
 
 
-# The noise models, keyed by their own name.
+@dataclass
+class MixtureParams:
+    """Settings of `Mixture`: which model fired, and every model's settings."""
+
+    model_id: jax.Array
+    models: tuple
+
+
+class Mixture:
+    """Draw a noise model per instance, alongside the instance itself.
+
+    Every other model here is chosen by holding it, so nothing dispatches. That
+    is the right default, but it makes the *model family* a property of the
+    problem rather than of the instance -- and meta-learning sometimes wants a
+    batch of instances that disagree about which noise they carry. This
+    restores exactly that, and is the only place in bbobax that pays for it:
+
+        problem = Sphere(num_dims=10, noise=Mixture(Gaussian(), Uniform(), Cauchy()))
+
+    The cost is real and worth stating. `sample` draws every model's settings
+    and `apply` selects with `lax.switch`, which under `vmap` over a varying
+    `model_id` evaluates *every* branch for every solution. With three models
+    that is three noise models computed per evaluation. Prefer looping over
+    models in Python -- as one loops over functions and dimensions -- and reach
+    for this only when one batch genuinely has to mix them.
+
+    Note that severity already varies continuously per instance inside a single
+    model (`Gaussian` draws its beta across the paper's moderate-to-severe
+    span), so a fixed model is not a fixed difficulty. Only the family is
+    fixed, and that is what this changes.
+    """
+
+    name = "mixture"
+
+    def __init__(self, *models: Noise):
+        """Initialize the mixture.
+
+        Args:
+            *models: The models to draw among, uniformly.
+
+        Raises:
+            ValueError: If no model is given.
+
+        """
+        if not models:
+            raise ValueError("Mixture needs at least one model")
+        self.models = models
+
+    def sample(self, key: jax.Array, num_dims: int) -> MixtureParams:
+        """Draw which model this instance carries, and every model's settings."""
+        key_id, *keys = jax.random.split(key, len(self.models) + 1)
+        return MixtureParams(
+            model_id=jax.random.choice(key_id, len(self.models)),
+            models=tuple(
+                model.sample(k, num_dims) for model, k in zip(self.models, keys)
+            ),
+        )
+
+    def apply(
+        self, key: jax.Array, value: jax.Array, params: MixtureParams
+    ) -> jax.Array:
+        """Disturb one value with the model this instance drew."""
+        # Default arguments bind per iteration; a bare closure over the loop
+        # variable would give every branch the last model.
+        branches = [
+            lambda model=model, model_params=model_params: model.apply(
+                key, value, model_params
+            )
+            for model, model_params in zip(self.models, params.models)
+        ]
+        return jax.lax.switch(params.model_id, branches)
+
+
+# The noise models, keyed by their own name. `Mixture` is deliberately absent:
+# it is a combinator over models rather than a model, and has no bare form.
 #
 # Left to inference rather than annotated `dict[str, type[Noise]]`: `Noise` is a
 # protocol, and a protocol's *data* members (here `name`) are not reachable

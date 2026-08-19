@@ -30,18 +30,17 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .problem import BBOBProblem
-from .types import BBOBParams
+from .problem import BBOBParams, BBOBProblem
 
 
-def _lambda_alpha_vector(alpha: float, num_dims: int) -> jax.Array:
-    """Return the conditioning vector `alpha ** (0.5 i / (D - 1))`.
+def lambda_alpha(condition: float, num_dims: int) -> jax.Array:
+    """Conditioning transformation function: `condition ** (0.5 i / (D - 1))`.
 
     The paper's Lambda^alpha, and COCO's `transform_vars_conditioning`, which
-    spells the same thing as `pow(sqrt(alpha), i / (D - 1))`.
+    spells the same thing as `pow(sqrt(condition), i / (D - 1))`.
     """
     exp = 0.5 * jnp.arange(num_dims) / (num_dims - 1)
-    return jnp.power(alpha, exp)
+    return jnp.power(condition, exp)
 
 
 def transform_osz(element: jax.Array) -> jax.Array:
@@ -99,7 +98,7 @@ class Ellipsoidal(BBOBProblem):
 
     name = "ellipsoidal"
 
-    #: Conditioning (COCO: the `conditioning` f_ellipsoid is allocated with).
+    # Conditioning (COCO: the `conditioning` f_ellipsoid is allocated with).
     condition: float = 1e6
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
@@ -115,14 +114,14 @@ class Rastrigin(BBOBProblem):
 
     name = "rastrigin"
 
-    #: Conditioning.
+    # Conditioning.
     condition: float = 10.0
-    #: Asymmetry, the paper's beta.
+    # Asymmetry, the paper's beta.
     beta: float = 0.2
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
         z = transform_asy(transform_osz(x - params.x_opt), self.beta)
-        z = _lambda_alpha_vector(self.condition, self.num_dims) * z
+        z = lambda_alpha(self.condition, self.num_dims) * z
 
         oscillation = jnp.sum(jnp.cos(2 * jnp.pi * z))
         value = 10 * (self.num_dims - oscillation) + jnp.sum(jnp.square(z))
@@ -134,11 +133,9 @@ class BuecheRastrigin(BBOBProblem):
 
     name = "bueche_rastrigin"
 
-    #: Conditioning.
+    # Conditioning.
     condition: float = 10.0
-    #: Extra conditioning on the skewed coordinates.
-    skew: float = 10.0
-    #: Multiplier on the boundary penalty.
+    # Multiplier on the boundary penalty.
     penalty_factor: float = 100.0
 
     def _sample_x_opt(self, key: jax.Array) -> jax.Array:
@@ -163,9 +160,9 @@ class BuecheRastrigin(BBOBProblem):
         # do) is exact.
         z = transform_osz(x - params.x_opt)
 
-        lambda_alpha = _lambda_alpha_vector(self.condition, self.num_dims)
+        conditioning = lambda_alpha(self.condition, self.num_dims)
         is_skewed = (z > 0.0) & (jnp.arange(self.num_dims) % 2 == 0)
-        z = jnp.where(is_skewed, self.skew, 1.0) * lambda_alpha * z
+        z = jnp.where(is_skewed, 10.0, 1.0) * conditioning * z
 
         oscillation = jnp.sum(jnp.cos(2 * jnp.pi * z))
         value = 10 * (self.num_dims - oscillation) + jnp.sum(jnp.square(z))
@@ -177,7 +174,7 @@ class LinearSlope(BBOBProblem):
 
     name = "linear_slope"
 
-    #: Conditioning of the slope (COCO: `alpha` in f_linear_slope.c).
+    # Conditioning of the slope (COCO: `alpha` in f_linear_slope.c).
     condition: float = 100.0
 
     def _sample_x_opt(self, key: jax.Array) -> jax.Array:
@@ -195,7 +192,7 @@ class LinearSlope(BBOBProblem):
         x_opt = params.x_opt
 
         z = jnp.where(x * x_opt < 25.0, x, x_opt)
-        s = jnp.sign(x_opt) * _lambda_alpha_vector(self.condition, self.num_dims)
+        s = jnp.sign(x_opt) * lambda_alpha(self.condition, self.num_dims)
 
         value = jnp.sum(5.0 * jnp.abs(s) - s * z)
         return value, jnp.array(0.0)
@@ -209,19 +206,17 @@ class AttractiveSector(BBOBProblem):
 
     name = "attractive_sector"
 
-    #: Conditioning.
+    # Conditioning.
     condition: float = 10.0
-    #: Weight of the coordinates on the optimum's side.
-    sector: float = 100.0
-    #: Exponent of the final power transform (COCO: `transform_obj_power`).
+    # Exponent of the final power transform (COCO: `transform_obj_power`).
     power: float = 0.9
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
         z = params.r @ (x - params.x_opt)
-        z = _lambda_alpha_vector(self.condition, self.num_dims) * z
+        z = lambda_alpha(self.condition, self.num_dims) * z
         z = params.q @ z
 
-        s = jnp.where(z * params.x_opt > 0.0, self.sector, 1.0)
+        s = jnp.where(z * params.x_opt > 0.0, 100.0, 1.0)
 
         value = jnp.power(transform_osz(jnp.sum(jnp.square(s * z))), self.power)
         return value, jnp.array(0.0)
@@ -232,16 +227,16 @@ class StepEllipsoidal(BBOBProblem):
 
     name = "step_ellipsoidal"
 
-    #: Conditioning of the ellipsoid.
+    # Conditioning of the ellipsoid.
     condition: float = 100.0
-    #: Conditioning applied before the step (COCO: `alpha` in f_step_ellipsoid.c).
+    # Conditioning applied before the step (COCO: `alpha` in f_step_ellipsoid.c).
     alpha: float = 10.0
-    #: Multiplier on the boundary penalty.
+    # Multiplier on the boundary penalty.
     penalty_factor: float = 1.0
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
         z_hat = params.r @ (x - params.x_opt)
-        z_hat = _lambda_alpha_vector(self.alpha, self.num_dims) * z_hat
+        z_hat = lambda_alpha(self.alpha, self.num_dims) * z_hat
 
         # floor(0.5 + z) is round-half-up, matching COCO's C
         # (`coco_double_round`). The 2009 Python reference uses numpy's
@@ -325,7 +320,7 @@ class EllipsoidalRotated(BBOBProblem):
 
     name = "ellipsoidal_rotated"
 
-    #: Conditioning.
+    # Conditioning.
     condition: float = 1e6
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
@@ -341,7 +336,7 @@ class Discus(BBOBProblem):
 
     name = "discus"
 
-    #: Conditioning of the single distinguished axis.
+    # Conditioning of the single distinguished axis.
     condition: float = 1e6
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
@@ -359,9 +354,9 @@ class BentCigar(BBOBProblem):
 
     name = "bent_cigar"
 
-    #: Conditioning of all but the first axis.
+    # Conditioning of all but the first axis.
     condition: float = 1e6
-    #: Asymmetry, the paper's beta.
+    # Asymmetry, the paper's beta.
     beta: float = 0.5
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
@@ -380,14 +375,14 @@ class SharpRidge(BBOBProblem):
 
     name = "sharp_ridge"
 
-    #: Conditioning.
+    # Conditioning.
     condition: float = 10.0
-    #: Weight of the ridge (COCO: `alpha` in f_sharp_ridge.c).
+    # Weight of the ridge (COCO: `alpha` in f_sharp_ridge.c).
     alpha: float = 100.0
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
         z = params.r @ (x - params.x_opt)
-        z = _lambda_alpha_vector(self.condition, self.num_dims) * z
+        z = lambda_alpha(self.condition, self.num_dims) * z
         z = params.q @ z
 
         z_squared = jnp.square(z)
@@ -418,16 +413,16 @@ class RastriginRotated(BBOBProblem):
 
     name = "rastrigin_rotated"
 
-    #: Conditioning.
+    # Conditioning.
     condition: float = 10.0
-    #: Asymmetry, the paper's beta.
+    # Asymmetry, the paper's beta.
     beta: float = 0.2
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
         z = params.r @ (x - params.x_opt)
         z = transform_asy(transform_osz(z), self.beta)
         z = params.q @ z
-        z = _lambda_alpha_vector(self.condition, self.num_dims) * z
+        z = lambda_alpha(self.condition, self.num_dims) * z
         z = params.r @ z
 
         oscillation = jnp.sum(jnp.cos(2 * jnp.pi * z))
@@ -440,12 +435,12 @@ class Weierstrass(BBOBProblem):
 
     name = "weierstrass"
 
-    #: Conditioning. The series flattens the landscape, so the conditioning
+    # Conditioning. The series flattens the landscape, so the conditioning
     # enters inverted: COCO spells it `base = 1 / sqrt(condition)`.
     condition: float = 100.0
-    #: Summands of the truncated series (COCO: `F_WEIERSTRASS_SUMMANDS`).
+    # Summands of the truncated series (COCO: `F_WEIERSTRASS_SUMMANDS`).
     k_order: int = 12
-    #: Multiplier on the boundary penalty, divided by the dimension.
+    # Multiplier on the boundary penalty, divided by the dimension.
     penalty_factor: float = 10.0
 
     # The series coefficients and f_0, built once. With numpy rather than jnp:
@@ -459,7 +454,7 @@ class Weierstrass(BBOBProblem):
         z = params.r @ (x - params.x_opt)
         z = transform_osz(z)
         z = params.q @ z
-        z = _lambda_alpha_vector(1.0 / self.condition, self.num_dims) * z
+        z = lambda_alpha(1.0 / self.condition, self.num_dims) * z
         z = params.r @ z
 
         out = jnp.sum(
@@ -476,18 +471,18 @@ class SchaffersF7(BBOBProblem):
 
     name = "schaffers_f7"
 
-    #: Conditioning; the only thing f18 changes.
+    # Conditioning; the only thing f18 changes.
     condition: float = 10.0
-    #: Asymmetry, the paper's beta.
+    # Asymmetry, the paper's beta.
     beta: float = 0.5
-    #: Multiplier on the boundary penalty.
+    # Multiplier on the boundary penalty.
     penalty_factor: float = 10.0
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
         z = params.r @ (x - params.x_opt)
         z = transform_asy(z, self.beta)
         z = params.q @ z
-        z = _lambda_alpha_vector(self.condition, self.num_dims) * z
+        z = lambda_alpha(self.condition, self.num_dims) * z
 
         z_i = z[:-1]
         z_ip1 = jnp.roll(z, -1)[:-1]
@@ -542,13 +537,13 @@ class Schwefel(BBOBProblem):
 
     name = "schwefel"
 
-    #: Conditioning.
+    # Conditioning.
     condition: float = 10.0
-    #: The constant Schwefel is built around; the optimum sits at +-half of it.
+    # The constant Schwefel is built around; the optimum sits at +-half of it.
     # (The C source carries ...4637 in one literal; the paper, bbobbenchmarks
     # and C's own best_parameter all say ...4633.)
     constant: float = 4.2096874633
-    #: Multiplier on the boundary penalty, which acts on the scaled z.
+    # Multiplier on the boundary penalty, which acts on the scaled z.
     penalty_factor: float = 100.0
 
     def _sample_x_opt(self, key: jax.Array) -> jax.Array:
@@ -566,8 +561,7 @@ class Schwefel(BBOBProblem):
         x_opt_im1 = jnp.roll(x_opt, 1).at[0].set(0.0)
         z_hat = x_hat + 0.25 * (x_hat_im1 - 2 * jnp.abs(x_opt_im1))
         z = 100 * (
-            _lambda_alpha_vector(self.condition, self.num_dims)
-            * (z_hat - 2 * jnp.abs(x_opt))
+            lambda_alpha(self.condition, self.num_dims) * (z_hat - 2 * jnp.abs(x_opt))
             + 2 * jnp.abs(x_opt)
         )
 
@@ -588,31 +582,27 @@ class _Gallagher(BBOBProblem):
     `fold` separates the two variants' layouts.
     """
 
-    #: Number of Gaussian peaks.
+    # Number of Gaussian peaks.
     num_optima: int
-    #: Conditioning of the global (first) peak.
+    # Conditioning of the global (first) peak.
     first_condition: float
-    #: Half-width of the box the non-global peaks are drawn from.
+    # Half-width of the box the non-global peaks are drawn from.
     y_range: float
-    #: Tag folded into the instance key, so the two variants differ.
+    # Tag folded into the instance key, so the two variants differ.
     fold: int
-    #: Largest conditioning among the local peaks (COCO: `maxcondition`).
+    # Largest conditioning among the local peaks (COCO: `maxcondition`).
     max_condition: float = 1000.0
-    #: Weight of the global peak; the local ones ramp over `weight_range`.
-    first_weight: float = 10.0
-    weight_range: tuple[float, float] = (1.1, 9.1)
-    #: Multiplier on the boundary penalty.
+    # Multiplier on the boundary penalty.
     penalty_factor: float = 1.0
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
         key = jax.random.fold_in(params.key, self.fold)
         peaks = jnp.arange(self.num_optima)
 
-        low, high = self.weight_range
         w = jnp.where(
             peaks == 0,
-            self.first_weight,
-            low + (high - low) * (peaks - 1.0) / (self.num_optima - 2.0),
+            10.0,
+            1.1 + 8.0 * (peaks - 1.0) / (self.num_optima - 2.0),
         )
 
         condition_set = jnp.power(
@@ -629,9 +619,9 @@ class _Gallagher(BBOBProblem):
         )
         # C_i is diagonal, so carry the diagonal alone: (num_optima, D) rather
         # than (num_optima, D, D).
-        c = jax.vmap(
-            lambda alpha: _lambda_alpha_vector(alpha, self.num_dims) / alpha**0.25
-        )(conditions)
+        c = jax.vmap(lambda alpha: lambda_alpha(alpha, self.num_dims) / alpha**0.25)(
+            conditions
+        )
 
         key, subkey = jax.random.split(key)
         keys = jax.random.split(subkey, self.num_optima)
@@ -690,20 +680,20 @@ class Katsuura(BBOBProblem):
 
     name = "katsuura"
 
-    #: Conditioning.
+    # Conditioning.
     condition: float = 100.0
-    #: Terms of the inner series, exactly as official. The powers are computed
+    # Terms of the inner series, exactly as official. The powers are computed
     # in floating point (2.0**j), so there is no integer overflow; in float32
     # the j > 24 terms are below mantissa resolution and contribute harmless
     # near-zero noise, while in float64 all 32 are needed for exactness (J=30
     # costs ~1e-7 absolute).
     num_terms: int = 32
-    #: Multiplier on the boundary penalty.
+    # Multiplier on the boundary penalty.
     penalty_factor: float = 1.0
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
         z = params.r @ (x - params.x_opt)
-        z = _lambda_alpha_vector(self.condition, self.num_dims) * z
+        z = lambda_alpha(self.condition, self.num_dims) * z
         z = params.q @ z
 
         two_pow_j = jnp.power(2.0, jnp.arange(1, self.num_terms + 1))
@@ -725,13 +715,13 @@ class Lunacek(BBOBProblem):
 
     name = "lunacek"
 
-    #: Conditioning.
+    # Conditioning.
     condition: float = 100.0
-    #: Centre of the first sphere; the optimum sits at +-half of it.
+    # Centre of the first sphere; the optimum sits at +-half of it.
     mu_0: float = 2.5
-    #: Depth of the second sphere (COCO: `d`).
+    # Depth of the second sphere (COCO: `d`).
     depth: float = 1.0
-    #: Multiplier on the boundary penalty.
+    # Multiplier on the boundary penalty.
     penalty_factor: float = 1e4
 
     def _sample_x_opt(self, key: jax.Array) -> jax.Array:
@@ -749,7 +739,7 @@ class Lunacek(BBOBProblem):
         x_hat = 2.0 * jnp.sign(params.x_opt) * x
 
         z = params.r @ (x_hat - self.mu_0)
-        z = _lambda_alpha_vector(self.condition, self.num_dims) * z
+        z = lambda_alpha(self.condition, self.num_dims) * z
         z = params.q @ z
 
         s_1 = jnp.sum(jnp.square(x_hat - self.mu_0))

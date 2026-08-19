@@ -7,8 +7,7 @@ import pytest
 
 from bbobax.functions import BBOB_PROBLEMS, Rastrigin, Sphere, suite
 from bbobax.noise import Noiseless
-from bbobax.problem import BBOBProblem
-from bbobax.types import BBOBEval, BBOBParams
+from bbobax.problem import BBOBEval, BBOBParams, BBOBProblem
 
 
 def test_problem_initialization():

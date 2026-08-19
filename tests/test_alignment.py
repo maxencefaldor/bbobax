@@ -35,7 +35,7 @@ import pytest
 
 from _official import bbobbenchmarks as bb
 from bbobax.functions import BBOB_PROBLEMS
-from bbobax.types import BBOBParams
+from bbobax.problem import BBOBParams
 from conftest import noiseless_params
 
 # Tolerances: values must match to 1e-9 relative against |f - fopt|, with an

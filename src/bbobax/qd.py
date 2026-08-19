@@ -18,9 +18,33 @@ from typing import Any, Protocol, runtime_checkable
 
 import jax
 import jax.numpy as jnp
+from flax.struct import dataclass
 
-from .problem import BBOBProblem
-from .types import QDEval, QDParams
+from .problem import BBOBParams, BBOBProblem
+
+
+@dataclass
+class QDParams:
+    """One sampled instance of a Quality-Diversity problem.
+
+    Composed, not inherited: a QD problem is a problem paired with a
+    descriptor, and each half draws its own instance data. The two fields are
+    named for the two halves of `QDProblem`, so the parameters read the same
+    way the object does. `descriptor` is whatever that descriptor's `sample`
+    returns -- a projection matrix for `RandomProjection`, something else for a
+    descriptor that needs more.
+    """
+
+    problem: BBOBParams
+    descriptor: Any
+
+
+@dataclass
+class QDEval:
+    """What evaluating a solution on a Quality-Diversity problem yields."""
+
+    fitness: jax.Array
+    descriptor: jax.Array
 
 
 @runtime_checkable
@@ -32,7 +56,7 @@ class Descriptor(Protocol):
     it to cover a batch.
     """
 
-    #: Dimensionality of the descriptor space.
+    # Dimensionality of the descriptor space.
     descriptor_size: int
 
     def sample(self, key: jax.Array, num_dims: int) -> Any:

@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import pytest
 
 from bbobax.noise import NoiselessParams
-from bbobax.types import BBOBParams
+from bbobax.problem import BBOBParams
 
 # The whole suite runs in float64: the alignment tests (tests/test_alignment.py)
 # compare against the official 2009 implementation at 1e-9 relative error, and

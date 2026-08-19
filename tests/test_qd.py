@@ -6,8 +6,7 @@ import numpy as np
 import pytest
 
 from bbobax.functions import BBOB_PROBLEMS, Rastrigin, Sphere
-from bbobax.qd import Descriptor, QDProblem, RandomProjection
-from bbobax.types import QDEval, QDParams
+from bbobax.qd import Descriptor, QDEval, QDParams, QDProblem, RandomProjection
 
 
 def test_random_projection_is_a_descriptor():

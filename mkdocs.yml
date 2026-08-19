@@ -55,7 +55,6 @@ nav:
       - Functions: reference/functions.md
       - Quality-Diversity: reference/qd.md
       - Noise Models: reference/noise.md
-      - Types: reference/types.md
   - License: license.md
 
 markdown_extensions:

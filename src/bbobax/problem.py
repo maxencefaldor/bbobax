@@ -19,11 +19,48 @@ different contract and would get its own, rather than a parameter these 24
 carry and ignore.
 """
 
+from typing import Any
+
 import jax
 import jax.numpy as jnp
+from flax.struct import dataclass
 
 from .noise import Noise, Noiseless
-from .types import BBOBEval, BBOBParams
+
+
+@dataclass
+class BBOBParams:
+    """One sampled instance of a problem.
+
+    Everything that varies between instances lives here, drawn once by
+    `BBOBProblem.sample` and never mutated. The function and the dimension are
+    the *problem's*, not the instance's -- COCO enumerates those and draws only
+    the instance, and so does bbobax.
+
+    - `key` is the instance's own PRNG key, for instance structure that is
+      cheaper to derive than to store -- the Gallagher functions draw their
+      peak layouts from it.
+    - `x_opt` is the function's true argmin, drawn by `_sample_x_opt`.
+    - `r` and `q` are the instance's rotation matrices, the R and Q of the
+      function definitions.
+    - `noise_params` is whatever the problem's noise model's `sample` returns.
+      A plugged-in component owns its own parameter type -- the same rule
+      `QDParams.descriptor` follows for descriptors.
+    """
+
+    key: jax.Array
+    x_opt: jax.Array
+    f_opt: jax.Array
+    r: jax.Array
+    q: jax.Array
+    noise_params: Any
+
+
+@dataclass
+class BBOBEval:
+    """What evaluating a solution yields."""
+
+    fitness: jax.Array
 
 
 class BBOBProblem:
@@ -44,7 +81,7 @@ class BBOBProblem:
     definition constrains where the optimum can be.
     """
 
-    #: The problem's name, and its key in `BBOB_PROBLEMS`.
+    # The problem's name, and its key in `BBOB_PROBLEMS`.
     name: str = "bbob"
 
     def __init__(

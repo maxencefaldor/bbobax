@@ -34,13 +34,13 @@ from .noise import (
     Additive,
     Cauchy,
     Gaussian,
+    Mixture,
     Noise,
     Noiseless,
     Uniform,
 )
-from .problem import BBOBProblem
-from .qd import Descriptor, QDProblem, RandomProjection
-from .types import BBOBEval, BBOBParams, QDEval, QDParams
+from .problem import BBOBEval, BBOBParams, BBOBProblem
+from .qd import Descriptor, QDEval, QDParams, QDProblem, RandomProjection
 
 __all__ = [
     # The contract, and the standard suite built on it
@@ -85,6 +85,7 @@ __all__ = [
     "Uniform",
     "Cauchy",
     "Additive",
+    "Mixture",
     # The data types
     "BBOBParams",
     "BBOBEval",

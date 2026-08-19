@@ -1,5 +1,8 @@
 """Tests for the 24 standard BBOB functions."""
 
+import subprocess
+import sys
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -10,19 +13,19 @@ from bbobax.functions import (
     DIMENSIONS,
     SchaffersF7,
     SchaffersF7IllConditioned,
-    _lambda_alpha_vector,
     f_pen,
+    lambda_alpha,
     transform_asy,
     transform_osz,
 )
 from bbobax.problem import BBOBProblem
 
 
-def test_lambda_alpha_vector():
+def testlambda_alpha():
     """The conditioning vector is 10**(0.5 i/(D-1)) over exactly D coordinates."""
     num_dims, alpha = 5, 10.0
 
-    res = _lambda_alpha_vector(alpha, num_dims)
+    res = lambda_alpha(alpha, num_dims)
     assert res.shape == (num_dims,)
 
     expected = alpha ** (0.5 * jnp.arange(num_dims) / (num_dims - 1))
@@ -223,3 +226,113 @@ def test_sample_x_opt_lands_where_the_definition_allows(name):
     if name == "bueche_rastrigin":
         assert np.all(x_opt[:, ::2] >= 0.0)
         assert np.any(x_opt[:, 1::2] < 0.0)
+
+
+def _stress_points(rng, num_dims, x_opt):
+    """Points that stress every branch a function has.
+
+    Inside the box, outside it (the boundary penalty), the corners (where the
+    penalty and the linear-slope plateau are extremal), a ring around the
+    optimum, and the optimum itself.
+    """
+    return np.vstack(
+        [
+            rng.uniform(-5.0, 5.0, size=(24, num_dims)),
+            rng.uniform(-8.0, 8.0, size=(8, num_dims)),
+            np.full((1, num_dims), 5.0),
+            np.full((1, num_dims), -5.0),
+            np.zeros((1, num_dims)),
+            x_opt + rng.normal(scale=1e-8, size=(4, num_dims)),
+            x_opt[None, :],
+        ]
+    )
+
+
+@pytest.mark.parametrize("name", BBOB_PROBLEMS.keys())
+def test_no_function_is_ever_non_finite(name):
+    """Every function is finite everywhere it can be asked, at every dimension.
+
+    Across all of COCO's `DIMENSIONS`, not a convenient few: the dimension
+    enters `katsuura` as `10 / D**1.2`, `lunacek` as `sqrt(D + 20) - 4.1`, and
+    `weierstrass` and `schwefel` divide by it, so D = 40 exercises expressions
+    that D = 5 never reaches. Checked through `evaluate`, so the boundary
+    penalty and `f_opt` are on the path too.
+    """
+    for num_dims in DIMENSIONS:
+        problem = BBOB_PROBLEMS[name](num_dims=num_dims)
+        params = problem.sample(jax.random.key(num_dims))
+
+        rng = np.random.default_rng(1000 + num_dims)
+        xs = jnp.asarray(_stress_points(rng, num_dims, np.asarray(params.x_opt)))
+        keys = jax.random.split(jax.random.key(1), xs.shape[0])
+
+        fitness = np.asarray(
+            jax.vmap(problem.evaluate, in_axes=(0, 0, None))(keys, xs, params).fitness
+        )
+
+        assert np.all(np.isfinite(fitness)), (
+            f"{name} at D={num_dims}: "
+            f"{int((~np.isfinite(fitness)).sum())} non-finite of {fitness.size}"
+        )
+        # BBOB minimizes to f_opt, pinned at 0 by default: nothing may go below.
+        assert np.all(fitness >= -1e-9), f"{name} at D={num_dims}: below the optimum"
+
+
+@pytest.mark.parametrize("name", BBOB_PROBLEMS.keys())
+def test_every_function_reaches_its_optimum_at_every_dimension(name):
+    """f(x_opt) == 0 across all of COCO's dimensions, not just the small ones."""
+    for num_dims in DIMENSIONS:
+        problem = BBOB_PROBLEMS[name](num_dims=num_dims)
+        params = problem.sample(jax.random.key(num_dims))
+
+        value, penalty = problem._value(params.x_opt, params)
+        assert float(value) + float(penalty) == pytest.approx(0.0, abs=1e-9), (
+            f"{name} at D={num_dims}: f(x_opt) = {float(value) + float(penalty)!r}"
+        )
+
+
+# The suite runs in float64 (conftest), which is what the alignment tests need
+# -- but float32 is JAX's default and therefore what bbobax actually runs in
+# unless a user opts out. That cannot be checked in-process once x64 is on, so
+# it is checked in a fresh interpreter.
+_FLOAT32_SWEEP = """
+import jax, jax.numpy as jnp, numpy as np
+import bbobax
+
+assert jnp.zeros(1).dtype == jnp.float32, "expected float32 by default"
+
+bad = []
+for name, problem_class in bbobax.BBOB_PROBLEMS.items():
+    for num_dims in bbobax.DIMENSIONS:
+        problem = problem_class(num_dims=num_dims)
+        params = problem.sample(jax.random.key(num_dims))
+        rng = np.random.default_rng(num_dims)
+        xs = jnp.asarray(np.vstack([
+            rng.uniform(-5.0, 5.0, (24, num_dims)),
+            rng.uniform(-8.0, 8.0, (8, num_dims)),
+            np.asarray(params.x_opt)[None, :],
+        ]))
+        keys = jax.random.split(jax.random.key(1), xs.shape[0])
+        fitness = np.asarray(
+            jax.vmap(problem.evaluate, in_axes=(0, 0, None))(keys, xs, params).fitness
+        )
+        if not np.all(np.isfinite(fitness)):
+            bad.append((name, num_dims))
+print("BAD:" + repr(bad))
+"""
+
+
+def test_no_function_overflows_in_float32():
+    """Nothing overflows at the library's default precision, at any dimension.
+
+    float32 is where this could plausibly break: `katsuura` multiplies D terms
+    together before taking a fractional power, and `ellipsoidal` carries a 1e6
+    conditioning, both of which grow with the dimension.
+    """
+    result = subprocess.run(
+        [sys.executable, "-c", _FLOAT32_SWEEP],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "BAD:[]" in result.stdout, result.stdout

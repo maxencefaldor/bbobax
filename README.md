@@ -38,7 +38,10 @@ Guarantees you can rely on:
 *   Noise applies to the raw function value only; the boundary penalty and
     `f_opt` are added outside it, as the paper prescribes.
 *   Noise is opt-in (`Sphere(noise=Gaussian())`); the default is the plain
-    **noiseless** suite with rotations on, exactly COCO's noiseless BBOB.
+    **noiseless** suite with rotations on, exactly COCO's noiseless BBOB. A
+    model is *held*, not switched on, so nothing evaluates a model the problem
+    does not use — severity still varies continuously per instance, and
+    `Mixture(...)` is the explicit opt-in when a batch must mix families.
 *   The three official noise models **stabilize themselves**, as `fGauss`,
     `fUniform` and `fCauchy` do: below the 1e-8 target precision the
     undisturbed value comes back, so noise can never stop an algorithm

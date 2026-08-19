@@ -13,16 +13,18 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from bbobax.functions import Sphere
+from bbobax.functions import DIMENSIONS, Sphere
 from bbobax.noise import (
     NOISE_MODELS,
     TARGET_VALUE,
     Additive,
     Cauchy,
     Gaussian,
+    Mixture,
     Noise,
     Noiseless,
     Uniform,
+    _epsilon,
     stabilize,
 )
 
@@ -214,3 +216,120 @@ def test_noise_actually_disturbs(name):
         float(problem.evaluate(jax.random.key(k), x, params).fitness) for k in range(16)
     }
     assert len(values) > 1
+
+
+def test_mixture_is_absent_from_the_registry():
+    """`Mixture` is a combinator over models, not a model with a bare form."""
+    assert "mixture" not in NOISE_MODELS
+    assert isinstance(Mixture(Gaussian()), Noise)
+
+    with pytest.raises(ValueError, match="at least one"):
+        Mixture()
+
+
+def test_mixture_draws_a_model_per_instance():
+    """The one thing a held model cannot do: instances that disagree on family.
+
+    This is the meta-learning shape -- a batch of instances of one function
+    carrying different noise families -- and the reason `Mixture` exists.
+    """
+    models = (Gaussian(), Uniform(), Cauchy())
+    problem = Sphere(num_dims=4, noise=Mixture(*models))
+
+    instances = 64
+    keys = jax.random.split(jax.random.key(0), instances)
+    params = jax.vmap(problem.sample)(keys)
+
+    # Every family is represented across the batch, in one vmapped sample.
+    drawn = set(np.asarray(params.noise_params.model_id).tolist())
+    assert drawn == {0, 1, 2}
+
+    # And the batch evaluates in one vmapped call.
+    xs = jax.vmap(problem.sample_x)(keys)
+    results = jax.jit(jax.vmap(problem.evaluate, in_axes=(0, 0, 0)))(keys, xs, params)
+    assert results.fitness.shape == (instances,)
+    assert jnp.all(jnp.isfinite(results.fitness))
+
+
+def test_mixture_agrees_with_the_model_it_selected():
+    """A mixture applies exactly the model the instance drew, unchanged."""
+    models = (Gaussian(), Uniform(), Cauchy())
+    mixture = Mixture(*models)
+
+    for k in range(8):
+        params = mixture.sample(jax.random.key(k), 5)
+        chosen = models[int(params.model_id)]
+        key, value = jax.random.key(100 + k), jnp.array(3.0)
+
+        assert float(mixture.apply(key, value, params)) == pytest.approx(
+            float(chosen.apply(key, value, params.models[int(params.model_id)]))
+        )
+
+
+# The values a noise model can actually be handed: BBOB functions bottom out at
+# 0, so exactly-zero is reachable (at the optimum) and is the divide-by-zero
+# case for `Uniform`; the large end is what `bent_cigar` or `ellipsoidal`
+# produce far from their optimum at D = 40.
+_EXTREME_VALUES = [0.0, 1e-300, 1e-30, 1e-12, 1e-8, 1.0, 1e6, 1e15, 1e30]
+
+
+def _apply_many(model: Noise, value: jax.Array, params) -> np.ndarray:
+    """Apply `model` to one value under 64 keys.
+
+    Takes the model as a `Noise` rather than reading it off `NOISE_MODELS`
+    inline: the registry's value type is a union of the concrete classes, and
+    nothing correlates each one's `sample` output with its own `apply`. The
+    protocol is what a caller actually holds, and is where `params` is open.
+    """
+    return np.asarray(
+        jax.vmap(model.apply, in_axes=(0, None, None))(
+            jax.random.split(jax.random.key(2), 64), value, params
+        )
+    )
+
+
+@pytest.mark.parametrize("name", sorted(NOISE_MODELS))
+def test_no_model_divides_by_zero_or_returns_nan(name):
+    """No model produces a NaN or an infinity, including at f = 0 exactly.
+
+    `Uniform` divides by the value and `Cauchy` by a normal draw, so both need
+    their epsilon to be a real number at the working dtype -- which the paper's
+    1e-99 and 1e-199 are not in float32.
+    """
+    model = NOISE_MODELS[name]()
+
+    for num_dims in (2, 40):
+        params = model.sample(jax.random.key(num_dims), num_dims)
+        for value in _EXTREME_VALUES:
+            noisy = _apply_many(model, jnp.array(value), params)
+            assert np.all(np.isfinite(noisy)), (
+                f"{name} at D={num_dims}, f={value}: "
+                f"{int((~np.isfinite(noisy)).sum())} non-finite of {noisy.size}"
+            )
+
+
+@pytest.mark.parametrize("name", sorted(NOISE_MODELS))
+def test_every_model_stays_finite_on_a_real_problem(name):
+    """The same, through a problem, across every standard dimension."""
+    for num_dims in DIMENSIONS:
+        problem = Sphere(num_dims=num_dims, noise=NOISE_MODELS[name]())
+        params = problem.sample(jax.random.key(num_dims))
+
+        keys = jax.random.split(jax.random.key(3), 64)
+        xs = jax.vmap(problem.sample_x)(keys)
+        # The optimum is in the batch, so f = 0 reaches the model.
+        xs = xs.at[0].set(params.x_opt)
+
+        fitness = jax.vmap(problem.evaluate, in_axes=(0, 0, None))(keys, xs, params)
+        assert jnp.all(jnp.isfinite(fitness.fitness)), f"{name} at D={num_dims}"
+
+
+def test_the_epsilon_is_a_real_number_at_the_working_dtype():
+    """The paper's literals round to zero in float32; the guard must not."""
+    assert np.float32(1e-99) == 0.0
+    assert np.float32(1e-199) == 0.0
+
+    assert _epsilon(jnp.zeros((), dtype=jnp.float32)) > 0.0
+    assert _epsilon(jnp.zeros((), dtype=jnp.float64)) > 0.0
+    # Small enough that it cannot perturb any value the guard sits behind.
+    assert _epsilon(jnp.zeros((), dtype=jnp.float64)) < 1e-300

@@ -38,6 +38,15 @@ are now part of the three official models and cannot be switched off, while
 one transcribed into numpy, on the draws bbobax actually makes — the same
 approach `tests/test_alignment.py` takes for the functions.
 
+### Fixed — the noise epsilons were zero in float32
+
+The uniform and Cauchy models divide by a quantity that can be zero, and the
+paper guards each with a literal (`1e-99`, `1e-199`). Both round to exactly
+`0.0` in float32 — JAX's default — so neither guarded anything unless
+`jax_enable_x64` happened to be on. The guard is now the smallest positive
+normal of the working dtype, which holds in either precision and is
+indistinguishable from the paper's constant in float64.
+
 ### Changed — a noise model is an object too
 
 - `NoiseModel(noise_model_names=..., noise_ranges=..., use_stabilization=...)`
@@ -50,6 +59,34 @@ approach `tests/test_alignment.py` takes for the functions.
   settings at once, either; each model draws only what it uses.
 - Severity ranges move onto the model that uses them
   (`Gaussian(beta_range=...)`), replacing the `DEFAULT_RANGES` dictionary.
+- `Mixture(Gaussian(), Uniform(), Cauchy())` restores drawing a noise *family*
+  per instance, for meta-learning batches that need instances to disagree about
+  which noise they carry. It is the only thing here that dispatches, and says
+  so: under `vmap` it evaluates every model it holds, for every solution.
+
+### Added — coverage at the dimensions the suite actually defines
+
+No test reached above D = 10, so half of `DIMENSIONS` was never exercised —
+and the dimension is not incidental: it enters `katsuura` as `10 / D**1.2`,
+`lunacek` as `sqrt(D + 20) - 4.1`, and `weierstrass` and `schwefel` divide by
+it. Every function is now swept across all six standard dimensions for
+finiteness (inside the box, outside it, at the corners, around and at the
+optimum) and for `f(x_opt) == 0`. The same sweep runs in a fresh interpreter at
+float32, JAX's default, which the float64 suite otherwise never covers. Every
+noise model is checked for finiteness too, including at `f = 0` exactly — the
+divide-by-zero case the epsilon above exists for.
+
+### Changed — every module owns its own types
+
+`types.py` is gone. `BBOBParams`/`BBOBEval` live with `BBOBProblem`,
+`QDParams`/`QDEval` with `QDProblem`, and each noise model's parameters with
+that model — the rule the noise and descriptor redesigns established, now
+applied to the whole package. Public imports (`from bbobax import BBOBParams`)
+are unchanged.
+
+`_lambda_alpha_vector` becomes `lambda_alpha`, public alongside the three other
+transforms it sits with (`transform_osz`, `transform_asy`, `f_pen`) and named
+for the paper's symbol like they are.
 
 ### Changed — numbers
 
