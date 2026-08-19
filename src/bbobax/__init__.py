@@ -41,7 +41,18 @@ from .noise import (
     Uniform,
 )
 from .problem import BBOBEval, BBOBParams, BBOBProblem
-from .qd import Descriptor, QDEval, QDParams, QDProblem, RandomProjection
+from .qd import (
+    AlignedProjection,
+    Descriptor,
+    FourierProjection,
+    IrregularProjection,
+    QDEval,
+    QDParams,
+    QDProblem,
+    QuantizedProjection,
+    RandomProjection,
+    SubsetProjection,
+)
 from .transforms import f_pen, lambda_alpha, transform_asy, transform_osz
 
 __all__ = [
@@ -83,7 +94,13 @@ __all__ = [
     # Quality-Diversity, composed onto a problem
     "QDProblem",
     "Descriptor",
+    # The descriptor families, one per phenomenon
     "RandomProjection",
+    "IrregularProjection",
+    "QuantizedProjection",
+    "FourierProjection",
+    "SubsetProjection",
+    "AlignedProjection",
     # The transformations functions are built from, for building your own
     "lambda_alpha",
     "transform_osz",

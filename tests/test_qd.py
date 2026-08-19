@@ -1,4 +1,11 @@
-"""Tests for the Quality-Diversity extension."""
+"""Tests for the Quality-Diversity extension.
+
+The descriptor families are tested against the two promises the module makes:
+every family satisfies the same contract, and every family lands in
+`[-1, 1]^k` exactly for solutions inside the search box. Each family's own
+phenomenon -- irregularity, discontinuity, sensitivity, redundancy, alignment
+-- is then pinned by the property that defines it.
+"""
 
 import jax
 import jax.numpy as jnp
@@ -6,44 +13,273 @@ import numpy as np
 import pytest
 
 from bbobax.bbob import BBOB_PROBLEMS, Rastrigin, Sphere
-from bbobax.qd import Descriptor, QDEval, QDParams, QDProblem, RandomProjection
+from bbobax.qd import (
+    AlignedProjection,
+    Descriptor,
+    FourierProjection,
+    IrregularProjection,
+    QDEval,
+    QDParams,
+    QDProblem,
+    QuantizedProjection,
+    RandomProjection,
+    SubsetProjection,
+)
+
+FAMILIES = [
+    RandomProjection,
+    IrregularProjection,
+    QuantizedProjection,
+    FourierProjection,
+    SubsetProjection,
+    AlignedProjection,
+]
 
 
-def test_random_projection_is_a_descriptor():
-    """RandomProjection satisfies the Descriptor protocol structurally."""
-    assert isinstance(RandomProjection(descriptor_size=2), Descriptor)
+def make_instance(descriptor, num_dims=6, seed=0):
+    """One problem instance and the descriptor's, drawn the way QDProblem does."""
+    problem = Sphere(num_dims=num_dims)
+    key_problem, key_descriptor = jax.random.split(jax.random.key(seed))
+    problem_params = problem.sample(key_problem)
+    return problem, descriptor.sample(key_descriptor, problem, problem_params)
 
 
-@pytest.mark.parametrize("descriptor_size", [1, 2, 5])
-def test_random_projection_sample_and_evaluate(descriptor_size):
-    """The projection is drawn per instance and applied to one solution."""
-    num_dims = 10
-    descriptor = RandomProjection(descriptor_size=descriptor_size)
+# --- The contract, for every family ------------------------------------------
 
-    projection = descriptor.sample(jax.random.key(0), num_dims)
-    assert projection.shape == (descriptor_size, num_dims)
 
-    x = jnp.ones(num_dims)
-    result = descriptor.evaluate(x, projection)
-    assert result.shape == (descriptor_size,)
+@pytest.mark.parametrize("family", FAMILIES)
+def test_every_family_satisfies_the_protocol(family):
+    """All six families are Descriptors, structurally."""
+    assert isinstance(family(descriptor_size=2), Descriptor)
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_every_family_declares_the_box(family):
+    """Descriptor space is [-1, 1]^k by construction, and says so."""
+    assert family(descriptor_size=2).descriptor_range == (-1.0, 1.0)
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_every_family_lands_in_the_box(family):
+    """For solutions inside the search box, the descriptor is in [-1, 1]^k."""
+    descriptor = family(descriptor_size=2)
+    problem, params = make_instance(descriptor)
+
+    xs = jax.vmap(problem.sample_x)(jax.random.split(jax.random.key(1), 256))
+    values = jax.vmap(descriptor.evaluate, in_axes=(None, 0, None))(
+        jax.random.key(2), xs, params
+    )
+
+    assert values.shape == (256, 2)
+    assert jnp.all(jnp.abs(values) <= 1.0 + 1e-6)
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_every_family_is_deterministic_in_the_key(family):
+    """The shipped families measure exactly; the key is contract, not behavior."""
+    descriptor = family(descriptor_size=2)
+    problem, params = make_instance(descriptor)
+    x = problem.sample_x(jax.random.key(1))
+
+    values = {
+        tuple(np.asarray(descriptor.evaluate(jax.random.key(k), x, params)))
+        for k in range(4)
+    }
+    assert len(values) == 1
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_every_family_jit_vmaps(family):
+    """Sampling and evaluation compile, and evaluation vmaps over solutions."""
+    descriptor = family(descriptor_size=3)
+    problem, params = make_instance(descriptor)
+
+    xs = jax.vmap(problem.sample_x)(jax.random.split(jax.random.key(1), 8))
+    batch = jax.jit(jax.vmap(descriptor.evaluate, in_axes=(None, 0, None)))(
+        jax.random.key(2), xs, params
+    )
+    assert batch.shape == (8, 3)
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_descriptor_size_is_validated(family):
+    """A descriptor space needs at least one dimension."""
+    with pytest.raises(ValueError, match="descriptor_size"):
+        family(descriptor_size=0)
+
+
+# --- Each family's own phenomenon --------------------------------------------
+
+
+def test_random_projection_bounds_are_tight():
+    """The bound is achieved: the right box corner maps to exactly +-1."""
+    descriptor = RandomProjection(descriptor_size=2)
+    problem, params = make_instance(descriptor)
+
+    for row in np.asarray(params):
+        corner = 5.0 * np.sign(row)
+        value = float(np.asarray(row) @ corner)
+        assert value == pytest.approx(1.0)
+
+
+def test_irregular_projection_stays_bounded_and_differs():
+    """Osz and asy preserve [-1, 1] while bending the metric."""
+    plain = RandomProjection(descriptor_size=2)
+    irregular = IrregularProjection(descriptor_size=2, beta=0.5)
+    problem, params = make_instance(plain)  # same sample: same matrix
+
+    xs = jax.vmap(problem.sample_x)(jax.random.split(jax.random.key(1), 64))
+    straight = jax.vmap(plain.evaluate, in_axes=(None, 0, None))(
+        jax.random.key(2), xs, params
+    )
+    bent = jax.vmap(irregular.evaluate, in_axes=(None, 0, None))(
+        jax.random.key(2), xs, params
+    )
+
+    assert jnp.all(jnp.abs(bent) <= 1.0 + 1e-6)
+    assert not jnp.allclose(straight, bent)
+    # The endpoints are fixed: osz(+-1) = +-1 and asy leaves them.
     np.testing.assert_allclose(
-        np.asarray(result), np.asarray(projection) @ np.ones(num_dims), rtol=1e-12
+        np.asarray(irregular.evaluate(jax.random.key(0), jnp.zeros(6), params)),
+        0.0,
+        atol=1e-12,
     )
 
 
-def test_random_projection_jit_vmap():
-    """Test JAX transformations on the descriptor."""
-    num_dims, descriptor_size, batch_size = 10, 3, 8
-    descriptor = RandomProjection(descriptor_size=descriptor_size)
-    projection = descriptor.sample(jax.random.key(0), num_dims)
+def test_irregular_projection_needs_two_components():
+    """The asymmetry schedule spans components, exactly as BBOB needs D >= 2."""
+    with pytest.raises(ValueError, match="descriptor_size"):
+        IrregularProjection(descriptor_size=1)
 
-    result = jax.jit(descriptor.evaluate)(jnp.ones(num_dims), projection)
-    assert result.shape == (descriptor_size,)
 
-    batch = jax.vmap(descriptor.evaluate, in_axes=(0, None))(
-        jnp.ones((batch_size, num_dims)), projection
+def test_quantized_projection_values_are_level_centers():
+    """Every value is one of the num_levels centers, and more than one occurs."""
+    num_levels = 10
+    descriptor = QuantizedProjection(descriptor_size=2, num_levels=num_levels)
+    problem, params = make_instance(descriptor)
+
+    xs = jax.vmap(problem.sample_x)(jax.random.split(jax.random.key(1), 256))
+    values = jax.vmap(descriptor.evaluate, in_axes=(None, 0, None))(
+        jax.random.key(2), xs, params
     )
-    assert batch.shape == (batch_size, descriptor_size)
+
+    width = 2.0 / num_levels
+    levels = (values + 1.0) / width - 0.5
+    np.testing.assert_allclose(levels, np.round(levels), atol=1e-6)
+    assert len(np.unique(np.asarray(values))) > 2
+
+
+def test_quantized_projection_jumps():
+    """Two nearby solutions on either side of a level boundary differ by a level.
+
+    The discontinuity is the phenomenon: an arbitrarily small step in x moves
+    the descriptor by a whole level width.
+    """
+    num_levels = 10
+    descriptor = QuantizedProjection(descriptor_size=1, num_levels=num_levels)
+    problem, params = make_instance(descriptor, num_dims=2)
+
+    # March along a direction that moves the projection, in tiny steps.
+    direction = jnp.asarray(np.sign(np.asarray(params))[0])
+    steps = jnp.linspace(0.0, 4.0, 4096)
+    xs = steps[:, None] * direction[None, :]
+    values = jax.vmap(descriptor.evaluate, in_axes=(None, 0, None))(
+        jax.random.key(0), xs, params
+    )[:, 0]
+
+    jumps = jnp.abs(jnp.diff(values))
+    assert jnp.all((jumps == 0.0) | (jnp.abs(jumps - 2.0 / num_levels) < 1e-6))
+    assert jnp.any(jumps > 0.0)
+
+
+def test_fourier_projection_sensitivity_scales_with_bandwidth():
+    """The Lipschitz constant is the dial: 10x bandwidth, ~10x the gradient."""
+    problem = Sphere(num_dims=6)
+    key_problem, key_descriptor = jax.random.split(jax.random.key(0))
+    problem_params = problem.sample(key_problem)
+
+    norms = {}
+    for bandwidth in (1.0, 10.0):
+        descriptor = FourierProjection(descriptor_size=2, bandwidth=bandwidth)
+        params = descriptor.sample(key_descriptor, problem, problem_params)
+        xs = jax.vmap(problem.sample_x)(jax.random.split(jax.random.key(1), 64))
+        jacobians = jax.vmap(
+            jax.jacobian(descriptor.evaluate, argnums=1), in_axes=(None, 0, None)
+        )(jax.random.key(2), xs, params)
+        norms[bandwidth] = float(jnp.mean(jnp.linalg.norm(jacobians, axis=(1, 2))))
+
+    assert norms[10.0] > 5.0 * norms[1.0]
+
+
+def test_fourier_projection_is_bounded_everywhere():
+    """A cosine needs no box: bounded even far outside the search space."""
+    descriptor = FourierProjection(descriptor_size=2)
+    problem, params = make_instance(descriptor)
+
+    far = 100.0 * jax.random.normal(jax.random.key(1), shape=(64, 6))
+    values = jax.vmap(descriptor.evaluate, in_axes=(None, 0, None))(
+        jax.random.key(2), far, params
+    )
+    assert jnp.all(jnp.abs(values) <= 1.0)
+
+
+def test_subset_projection_ignores_the_rest():
+    """Moving a coordinate outside the subset does not move the descriptor."""
+    descriptor = SubsetProjection(descriptor_size=2, subset_size=2)
+    problem, params = make_instance(descriptor)
+
+    x = problem.sample_x(jax.random.key(1))
+    before = descriptor.evaluate(jax.random.key(2), x, params)
+
+    outside = jnp.setdiff1d(
+        jnp.arange(problem.num_dims), params.subset, size=problem.num_dims - 2
+    )
+    moved = x.at[outside].add(1.0)
+    after = descriptor.evaluate(jax.random.key(2), moved, params)
+    np.testing.assert_allclose(np.asarray(before), np.asarray(after), rtol=1e-12)
+
+    # And moving a subset coordinate does move it.
+    changed = descriptor.evaluate(
+        jax.random.key(2), x.at[params.subset[0]].add(1.0), params
+    )
+    assert not jnp.allclose(before, changed)
+
+
+def test_subset_projection_rejects_oversized_subsets():
+    """The subset cannot exceed the dimension it reads from."""
+    descriptor = SubsetProjection(descriptor_size=2, subset_size=8)
+    problem = Sphere(num_dims=4)
+    params = problem.sample(jax.random.key(0))
+
+    with pytest.raises(ValueError, match="subset_size"):
+        descriptor.sample(jax.random.key(1), problem, params)
+
+
+def test_aligned_projection_at_one_is_the_landscape_axes():
+    """Alignment = 1 describes the solution in the instance's own rotation."""
+    descriptor = AlignedProjection(descriptor_size=2, alignment=1.0)
+    problem = Sphere(num_dims=6)
+    key_problem, key_descriptor = jax.random.split(jax.random.key(0))
+    problem_params = problem.sample(key_problem)
+    params = descriptor.sample(key_descriptor, problem, problem_params)
+
+    rows = np.asarray(problem_params.r)[:2]
+    expected = rows / (np.sum(np.abs(rows), axis=-1, keepdims=True) * 5.0)
+    np.testing.assert_allclose(np.asarray(params), expected, rtol=1e-6)
+
+
+def test_aligned_projection_validates_its_dial():
+    """Alignment lives in [0, 1]; the rotation has only num_dims rows."""
+    with pytest.raises(ValueError, match="alignment"):
+        AlignedProjection(descriptor_size=2, alignment=1.5)
+
+    descriptor = AlignedProjection(descriptor_size=8)
+    problem = Sphere(num_dims=4)
+    with pytest.raises(ValueError, match="descriptor_size"):
+        descriptor.sample(jax.random.key(0), problem, problem.sample(jax.random.key(1)))
+
+
+# --- The composed problem -----------------------------------------------------
 
 
 def test_qd_problem_workflow():
@@ -69,13 +305,15 @@ def test_qd_problem_workflow():
 
 
 def test_qd_problem_delegates_what_it_wraps():
-    """A QD problem answers for the function it wraps."""
+    """A QD problem answers for the function it wraps, bounds included."""
     problem = QDProblem(Rastrigin(num_dims=7), RandomProjection(descriptor_size=3))
 
     assert problem.name == "rastrigin"
     assert problem.num_dims == 7
     assert problem.x_range == (-5.0, 5.0)
     assert problem.descriptor_size == 3
+    # The ground truth an archive needs, straight from the problem.
+    assert problem.descriptor_range == (-1.0, 1.0)
 
 
 def test_qd_fitness_is_the_underlying_fitness():
@@ -100,10 +338,11 @@ def test_qd_fitness_is_the_underlying_fitness():
     )
 
 
-def test_any_function_pairs_with_the_descriptor():
+@pytest.mark.parametrize("family", FAMILIES)
+def test_any_function_pairs_with_any_family(family):
     """Composition is why this is not 24 subclasses: all 24 pair the same way."""
     num_dims, descriptor_size = 4, 2
-    descriptor = RandomProjection(descriptor_size=descriptor_size)
+    descriptor = family(descriptor_size=descriptor_size)
     key = jax.random.key(3)
 
     for name, problem_class in BBOB_PROBLEMS.items():

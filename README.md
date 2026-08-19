@@ -46,7 +46,7 @@ fitness = jax.vmap(problem.evaluate, in_axes=(0, 0, None))(
 ).fitness  # (1024,)
 ```
 
-Quality-Diversity is composition — any function, any descriptor:
+Quality-Diversity is composition — any function pairs with any of six descriptor families (`RandomProjection`, `IrregularProjection`, `QuantizedProjection`, `FourierProjection`, `SubsetProjection`, `AlignedProjection`), each isolating one phenomenon of real behavior maps. Descriptor space is `[-1, 1]^k` by construction, so `problem.descriptor_range` is exact ground truth — whether your algorithm is told is your experiment's choice:
 
 ```python
 from bbobax import QDProblem, RandomProjection, Rastrigin
