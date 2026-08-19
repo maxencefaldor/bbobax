@@ -59,19 +59,3 @@ jobs:
         run: >
           uv run --python ${{ matrix.python-version }} --extra dev
           pytest tests/ --cov=bbobax --cov-report=term-missing
-
-  notebooks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - run: uv sync --extra dev --extra notebooks
-
-      - name: Execute notebooks
-        # Every notebook is documentation that has to keep working. The %pip
-        # cells are skipped: the environment is already installed.
-        run: uv run python scripts/run_notebooks.py

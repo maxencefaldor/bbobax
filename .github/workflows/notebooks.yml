@@ -1,0 +1,46 @@
+name: notebooks
+
+# The notebooks are experiments, not demos -- executing all six costs ~20
+# minutes of runner time -- so they run when they can actually break rather
+# than on every push: a change to them or to what they import, a weekly run
+# to catch drift in JAX and evosax upstream, or on request.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "notebooks/**"
+      - "src/**"
+      - "scripts/run_notebooks.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/notebooks.yml"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "notebooks/**"
+      - "src/**"
+      - "scripts/run_notebooks.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/notebooks.yml"
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  notebooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --extra dev --extra notebooks
+
+      - name: Execute notebooks
+        # Every notebook is documentation that has to keep working. The %pip
+        # cells are skipped: the environment is already installed. The extras
+        # are named again because `uv run` re-syncs without them otherwise.
+        run: uv run --extra dev --extra notebooks python scripts/run_notebooks.py
