@@ -35,8 +35,8 @@ from .noise import (
     Cauchy,
     Gaussian,
     Mixture,
-    Noise,
     Noiseless,
+    NoiseModel,
     Uniform,
 )
 from .problem import BBOBEval, BBOBParams, BBOBProblem
@@ -78,7 +78,7 @@ __all__ = [
     "Descriptor",
     "RandomProjection",
     # Noise models, held by a problem rather than switched on
-    "Noise",
+    "NoiseModel",
     "NOISE_MODELS",
     "Noiseless",
     "Gaussian",

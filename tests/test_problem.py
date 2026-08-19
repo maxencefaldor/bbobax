@@ -178,7 +178,7 @@ def test_default_noise_is_noiseless():
     problem = Sphere(num_dims=5)
 
     # The default model is Noiseless, held directly -- no pool, no switch.
-    assert isinstance(problem.noise, Noiseless)
+    assert isinstance(problem.noise_model, Noiseless)
 
     params = problem.sample(jax.random.key(0))
     x = problem.sample_x(jax.random.key(1))

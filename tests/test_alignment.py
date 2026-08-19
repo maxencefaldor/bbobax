@@ -215,9 +215,9 @@ def _make_params(x_opt, f_opt, r, q, key=None):
         f_opt=jnp.array(float(f_opt)),
         r=jnp.asarray(r, dtype=jnp.float64),
         q=jnp.asarray(q, dtype=jnp.float64),
-        # `_value` never reads noise_params; `evaluate` does, and it is not on
+        # `_value` never reads noise_model; `evaluate` does, and it is not on
         # this path. Zeros keep the params well-formed all the same.
-        noise_params=noiseless_params(),
+        noise_model=noiseless_params(),
     )
 
 

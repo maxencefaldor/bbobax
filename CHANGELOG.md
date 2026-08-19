@@ -49,10 +49,13 @@ indistinguishable from the paper's constant in float64.
 
 ### Changed — a noise model is an object too
 
-- `NoiseModel(noise_model_names=..., noise_ranges=..., use_stabilization=...)`
-  becomes one model per class: `Noiseless`, `Gaussian`, `Uniform`, `Cauchy`,
-  `Additive`, each satisfying the `Noise` protocol and owning its own parameter
-  type. A problem holds one: `Sphere(noise=Gaussian())`.
+- The `NoiseModel(noise_model_names=..., noise_ranges=...,
+  use_stabilization=...)` **container is gone**, replaced by one model per
+  class: `Noiseless`, `Gaussian`, `Uniform`, `Cauchy`, `Additive`. A problem
+  holds one: `Sphere(noise_model=Gaussian())`.
+  **Note the name is reused, not kept**: `NoiseModel` in 0.2.0 was that
+  container; in 0.3.0 it is the protocol each individual model satisfies. Code
+  that constructed `NoiseModel(...)` must construct a model instead.
 - **The `lax.switch` over noise models is gone.** Under `vmap` with a varying
   `noise_id` it evaluated every model for every solution — the same cost the
   function redesign removed. `NoiseParams` no longer carries all five models'
@@ -75,6 +78,39 @@ optimum) and for `f(x_opt) == 0`. The same sweep runs in a fresh interpreter at
 float32, JAX's default, which the float64 suite otherwise never covers. Every
 noise model is checked for finiteness too, including at `f = 0` exactly — the
 divide-by-zero case the epsilon above exists for.
+
+### Changed — one word for a noise model
+
+The library used `Noise`, `noise`, `noise_model` and `noise_params` for four
+views of the same thing. There is now one word. `NoiseModel` is the protocol
+(the paper's term, and parallel to `BBOBProblem`), `NOISE_MODELS` the registry
+(parallel to `BBOB_PROBLEMS`), `noise_model` both the problem's attribute and
+the field of `BBOBParams` holding that model's parameters.
+
+That last pairing is the rule the whole package now follows: **a field of a
+params container is named for the component whose parameters it holds**, so
+`problem.noise_model` and `params.noise_model` line up exactly as
+`QDProblem.descriptor` lines up with `QDParams.descriptor`, and `evaluate`
+reads `self.X.apply(..., params.X)` on both sides.
+
+`TARGET_VALUE` becomes `TARGET_PRECISION`, which is what the paper calls it.
+
+### Added — the paper's two severities are reachable
+
+Sampling severity continuously across the moderate-to-severe span is bbobax's
+deviation, and a useful one — difficulty then varies per instance for free,
+which is what meta-learning wants. But it means nothing here is comparable to a
+published f101-f130 result. `Gaussian.moderate()`, `Gaussian.severe()` and the
+same on `Uniform` and `Cauchy` pin the paper's exact points, so the deviation
+is a default rather than a constraint.
+
+### Fixed — the notebooks' stored outputs could go stale
+
+`scripts/run_notebooks.py` executed a copy and never wrote back, so a notebook
+whose code was updated kept the outputs of an older run — and the docs render
+*stored* outputs, so `00_getting_started` was showing readers a
+`noise_params=NoiseParams(noise_id=...)` repr for an API that no longer exists.
+The script takes `--save` now, and the outputs are regenerated.
 
 ### Changed — every module owns its own types
 

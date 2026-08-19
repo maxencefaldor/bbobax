@@ -35,7 +35,7 @@ def mock_params():
             f_opt=jnp.array(0.0),
             r=jnp.eye(num_dims),
             q=jnp.eye(num_dims),
-            noise_params=noiseless_params(),
+            noise_model=noiseless_params(),
         )
 
     return _get_mock_params

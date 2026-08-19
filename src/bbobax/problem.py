@@ -25,7 +25,7 @@ import jax
 import jax.numpy as jnp
 from flax.struct import dataclass
 
-from .noise import Noise, Noiseless
+from .noise import Noiseless, NoiseModel
 
 
 @dataclass
@@ -43,9 +43,12 @@ class BBOBParams:
     - `x_opt` is the function's true argmin, drawn by `_sample_x_opt`.
     - `r` and `q` are the instance's rotation matrices, the R and Q of the
       function definitions.
-    - `noise_params` is whatever the problem's noise model's `sample` returns.
-      A plugged-in component owns its own parameter type -- the same rule
-      `QDParams.descriptor` follows for descriptors.
+    - `noise_model` is whatever the problem's noise model's `sample` returns.
+
+    The last one follows the rule the whole package uses: **a field of a params
+    container is named for the component whose parameters it holds**, so
+    `problem.noise_model` and `params.noise_model` line up, exactly as
+    `QDProblem.descriptor` lines up with `QDParams.descriptor`.
     """
 
     key: jax.Array
@@ -53,7 +56,7 @@ class BBOBParams:
     f_opt: jax.Array
     r: jax.Array
     q: jax.Array
-    noise_params: Any
+    noise_model: Any
 
 
 @dataclass
@@ -92,7 +95,7 @@ class BBOBProblem:
         f_opt_range: tuple[float, float] = (0.0, 0.0),
         clip_x: bool = False,
         sample_rotation: bool = True,
-        noise: Noise | None = None,
+        noise_model: NoiseModel | None = None,
     ):
         """Initialize the problem.
 
@@ -111,10 +114,10 @@ class BBOBProblem:
                 rotates; with False, R = Q = I and every rotated variant
                 collapses onto its axis-aligned base function (measured:
                 f10 becomes f2 exactly). Only disable this deliberately.
-            noise: The noise model. The default is `Noiseless`, exactly
-                COCO's noiseless BBOB; pass a model to opt into noise. The
-                model is held, not switched on, so nothing evaluates a model
-                this problem does not use.
+            noise_model: How values are disturbed. The default is
+                `Noiseless`, exactly COCO's noiseless BBOB; pass a model to opt
+                into noise. The model is held, not switched on, so nothing
+                evaluates a model this problem does not use.
 
         Raises:
             ValueError: If `num_dims` is below 2.
@@ -131,7 +134,7 @@ class BBOBProblem:
 
         # Default is the plain noiseless suite -- exactly COCO's noiseless
         # BBOB. Noise is opt-in.
-        self.noise = Noiseless() if noise is None else noise
+        self.noise_model = Noiseless() if noise_model is None else noise_model
 
     def sample(self, key: jax.Array) -> BBOBParams:
         """Sample an instance of this problem.
@@ -166,9 +169,9 @@ class BBOBProblem:
             r = jnp.eye(self.num_dims)
             q = jnp.eye(self.num_dims)
 
-        noise_params = self.noise.sample(key_noise, self.num_dims)
+        noise_model = self.noise_model.sample(key_noise, self.num_dims)
 
-        return BBOBParams(key_instance, x_opt, f_opt, r, q, noise_params)
+        return BBOBParams(key_instance, x_opt, f_opt, r, q, noise_model)
 
     def evaluate(self, key: jax.Array, x: jax.Array, params: BBOBParams) -> BBOBEval:
         """Evaluate the fitness of a solution.
@@ -189,7 +192,7 @@ class BBOBProblem:
 
         # Noise applies to the raw value alone; the boundary penalty and f_opt
         # are added outside it, as the noisy-functions paper prescribes.
-        noisy = self.noise.apply(key, value, params.noise_params)
+        noisy = self.noise_model.apply(key, value, params.noise_model)
         return BBOBEval(fitness=noisy + penalty + params.f_opt)
 
     def sample_x(self, key: jax.Array) -> jax.Array:

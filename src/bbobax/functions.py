@@ -806,7 +806,7 @@ def suite(names: list[str] | None = None, **kwargs) -> dict[str, BBOBProblem]:
     Args:
         names: Which functions to include; defaults to all 24, in the
             canonical f1-f24 order.
-        **kwargs: Passed to every problem (`num_dims`, `noise`, ...).
+        **kwargs: Passed to every problem (`num_dims`, `noise_model`, ...).
 
     Returns:
         A mapping from function name to problem. Loop over it to cover the

@@ -16,13 +16,13 @@ import pytest
 from bbobax.functions import DIMENSIONS, Sphere
 from bbobax.noise import (
     NOISE_MODELS,
-    TARGET_VALUE,
+    TARGET_PRECISION,
     Additive,
     Cauchy,
     Gaussian,
     Mixture,
-    Noise,
     Noiseless,
+    NoiseModel,
     Uniform,
     _epsilon,
     stabilize,
@@ -52,9 +52,9 @@ def test_registry_is_keyed_by_each_model_name():
 
 
 def test_every_model_satisfies_the_protocol():
-    """Noise is a contract, not a base class: the models match it structurally."""
+    """NoiseModel is a contract, not a base class: models match it structurally."""
     for model_class in NOISE_MODELS.values():
-        assert isinstance(model_class(), Noise)
+        assert isinstance(model_class(), NoiseModel)
 
 
 def test_stabilize_matches_the_official_closing_lines():
@@ -67,7 +67,7 @@ def test_stabilize_matches_the_official_closing_lines():
         official_stabilize(np.asarray(value), np.asarray(noisy)),
         rtol=1e-15,
     )
-    assert TARGET_VALUE == TOL
+    assert TARGET_PRECISION == TOL
 
 
 def test_noiseless_returns_the_value_untouched():
@@ -190,7 +190,7 @@ def test_additive_is_a_bbobax_extension_and_is_not_stabilized():
 @pytest.mark.parametrize("name", sorted(NOISE_MODELS))
 def test_every_model_composes_onto_a_problem(name):
     """A problem holds one model; evaluation stays jittable and vmappable."""
-    problem = Sphere(num_dims=4, noise=NOISE_MODELS[name]())
+    problem = Sphere(num_dims=4, noise_model=NOISE_MODELS[name]())
     key = jax.random.key(0)
     params = problem.sample(key)
 
@@ -208,7 +208,7 @@ def test_every_model_composes_onto_a_problem(name):
 @pytest.mark.parametrize("name", ["gaussian", "uniform", "cauchy", "additive"])
 def test_noise_actually_disturbs(name):
     """A noisy problem is not deterministic in the evaluation key."""
-    problem = Sphere(num_dims=4, noise=NOISE_MODELS[name]())
+    problem = Sphere(num_dims=4, noise_model=NOISE_MODELS[name]())
     params = problem.sample(jax.random.key(0))
     x = problem.sample_x(jax.random.key(1))
 
@@ -221,7 +221,7 @@ def test_noise_actually_disturbs(name):
 def test_mixture_is_absent_from_the_registry():
     """`Mixture` is a combinator over models, not a model with a bare form."""
     assert "mixture" not in NOISE_MODELS
-    assert isinstance(Mixture(Gaussian()), Noise)
+    assert isinstance(Mixture(Gaussian()), NoiseModel)
 
     with pytest.raises(ValueError, match="at least one"):
         Mixture()
@@ -234,14 +234,14 @@ def test_mixture_draws_a_model_per_instance():
     carrying different noise families -- and the reason `Mixture` exists.
     """
     models = (Gaussian(), Uniform(), Cauchy())
-    problem = Sphere(num_dims=4, noise=Mixture(*models))
+    problem = Sphere(num_dims=4, noise_model=Mixture(*models))
 
     instances = 64
     keys = jax.random.split(jax.random.key(0), instances)
     params = jax.vmap(problem.sample)(keys)
 
     # Every family is represented across the batch, in one vmapped sample.
-    drawn = set(np.asarray(params.noise_params.model_id).tolist())
+    drawn = set(np.asarray(params.noise_model.model_id).tolist())
     assert drawn == {0, 1, 2}
 
     # And the batch evaluates in one vmapped call.
@@ -273,10 +273,10 @@ def test_mixture_agrees_with_the_model_it_selected():
 _EXTREME_VALUES = [0.0, 1e-300, 1e-30, 1e-12, 1e-8, 1.0, 1e6, 1e15, 1e30]
 
 
-def _apply_many(model: Noise, value: jax.Array, params) -> np.ndarray:
+def _apply_many(model: NoiseModel, value: jax.Array, params) -> np.ndarray:
     """Apply `model` to one value under 64 keys.
 
-    Takes the model as a `Noise` rather than reading it off `NOISE_MODELS`
+    Takes the model as a `NoiseModel` rather than reading it off `NOISE_MODELS`
     inline: the registry's value type is a union of the concrete classes, and
     nothing correlates each one's `sample` output with its own `apply`. The
     protocol is what a caller actually holds, and is where `params` is open.
@@ -312,7 +312,7 @@ def test_no_model_divides_by_zero_or_returns_nan(name):
 def test_every_model_stays_finite_on_a_real_problem(name):
     """The same, through a problem, across every standard dimension."""
     for num_dims in DIMENSIONS:
-        problem = Sphere(num_dims=num_dims, noise=NOISE_MODELS[name]())
+        problem = Sphere(num_dims=num_dims, noise_model=NOISE_MODELS[name]())
         params = problem.sample(jax.random.key(num_dims))
 
         keys = jax.random.split(jax.random.key(3), 64)
@@ -333,3 +333,51 @@ def test_the_epsilon_is_a_real_number_at_the_working_dtype():
     assert _epsilon(jnp.zeros((), dtype=jnp.float64)) > 0.0
     # Small enough that it cannot perturb any value the guard sits behind.
     assert _epsilon(jnp.zeros((), dtype=jnp.float64)) < 1e-300
+
+
+@pytest.mark.parametrize(
+    ("model_class", "moderate", "severe"),
+    [
+        (Gaussian, {"beta": 0.01}, {"beta": 1.0}),
+        (Uniform, {"beta": 0.01}, {"beta": 1.0}),
+        (Cauchy, {"alpha": 0.01, "p": 0.05}, {"alpha": 1.0, "p": 0.2}),
+    ],
+    ids=["gaussian", "uniform", "cauchy"],
+)
+def test_the_papers_two_severities_are_reachable_exactly(model_class, moderate, severe):
+    """Continuous severity is bbobax's deviation; the paper's points still pin.
+
+    Nothing here is comparable to a published f101-f130 result unless the
+    severity is pinned, so the two official points are constructors rather than
+    something a caller has to spell as a degenerate range.
+    """
+    for constructor, expected in (
+        (model_class.moderate, moderate),
+        (model_class.severe, severe),
+    ):
+        model = constructor()
+        # Pinned means pinned: every key gives the same settings.
+        for key_seed in range(4):
+            params = model.sample(jax.random.key(key_seed), 5)
+            for field, value in expected.items():
+                assert float(getattr(params, field)) == pytest.approx(value)
+
+
+def test_uniform_severity_carries_the_dimension_term_when_pinned():
+    """The uniform model's alpha is `multiplier * (0.49 + 1/D)` at both severities."""
+    for num_dims in (2, 5, 40):
+        assert float(Uniform.severe().sample(jax.random.key(0), num_dims).alpha) == (
+            pytest.approx(0.49 + 1 / num_dims)
+        )
+        assert float(Uniform.moderate().sample(jax.random.key(0), num_dims).alpha) == (
+            pytest.approx(0.01 * (0.49 + 1 / num_dims))
+        )
+
+
+def test_the_default_range_spans_the_two_severities():
+    """The continuous default runs from the moderate value to the severe one."""
+    assert Gaussian().beta_range == (0.01, 1.0)
+    assert Uniform().alpha_range == (0.01, 1.0)
+    assert Uniform().beta_range == (0.01, 1.0)
+    assert Cauchy().alpha_range == (0.01, 1.0)
+    assert Cauchy().p_range == (0.05, 0.2)

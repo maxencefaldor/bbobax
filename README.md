@@ -37,7 +37,7 @@ Guarantees you can rely on:
     exactly as COCO stores the optimum its construction ends up at.
 *   Noise applies to the raw function value only; the boundary penalty and
     `f_opt` are added outside it, as the paper prescribes.
-*   Noise is opt-in (`Sphere(noise=Gaussian())`); the default is the plain
+*   Noise is opt-in (`Sphere(noise_model=Gaussian())`); the default is the plain
     **noiseless** suite with rotations on, exactly COCO's noiseless BBOB. A
     model is *held*, not switched on, so nothing evaluates a model the problem
     does not use — severity still varies continuously per instance, and
@@ -74,6 +74,42 @@ Deliberate, documented deviations from COCO (design choices, not accidents):
     model onto any of the 24; official's noisy suite additionally swaps every
     function's boundary handling for a uniform factor of 100 and pairs
     specific functions with specific severities.
+
+## Which floating-point precision?
+
+JAX defaults to **float32**, and so does bbobax. That is the right default for
+almost everything, but not for everything — the rule is short:
+
+| You are… | Use | Why |
+|---|---|---|
+| comparing algorithms on a fixed budget | **float32** (default) | the landscape is faithful; relative comparisons are unaffected, and it is much faster on GPU/TPU |
+| meta-learning over the suite | **float32** (default) | same, and the batch sizes are where the time goes |
+| measuring how close you got to the optimum | **float64** | see below |
+| reproducing official BBOB values, or checking bbobax against them | **float64** | the alignment suite is defined at 1e-9 relative |
+
+```python
+import jax
+
+jax.config.update("jax_enable_x64", True)  # before any array is created
+```
+
+The dividing line is BBOB's **target precision of 1e-8**. float32 carries about
+7 decimal digits (`eps = 1.2e-7`), so on a landscape whose values are O(1) or
+larger, 1e-8 is below what the format can represent *relative to the value* —
+"did it reach 1e-8 of the optimum?" is not a question float32 can answer. Two
+consequences worth knowing:
+
+*   The noise models' `1.01e-8` stabilization offset is numerically invisible
+    in float32 for any value above ~0.08. Harmless — the offset only matters
+    near the target — but it is another reason target-precision work wants
+    float64.
+*   `katsuura` sums 32 terms whose last few are below float32's mantissa
+    resolution. They contribute near-zero noise rather than error, so the
+    function is fine in float32; it is only *exact* in float64.
+
+Everything is checked in both: the test suite runs in float64, and a separate
+sweep runs all 24 functions across all six standard dimensions in float32 to
+prove nothing overflows or goes non-finite at the default precision.
 
 ## Installation
 

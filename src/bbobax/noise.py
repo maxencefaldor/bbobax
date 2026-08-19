@@ -14,8 +14,8 @@ not want. `Mixture` is the one exception, and pays for itself in the open.
 
 Two things to know:
 
-- Noise applies to the raw function value only; the boundary penalty and f_opt
-  are added outside it (`BBOBProblem.evaluate`), as the paper prescribes.
+- Noise applies to the raw function value only; the boundary penalty and
+  f_opt are added outside it (`BBOBProblem.evaluate`), as the paper prescribes.
 - **Stabilization is part of the three official models, not an option.** Each
   of `fGauss`, `fUniform` and `fCauchy` ends by adding `1.01 * 1e-8` and
   returning the *undisturbed* value below that tolerance, unconditionally, so
@@ -24,11 +24,18 @@ Two things to know:
   neither does `Additive`, which is not a BBOB model and would only acquire a
   spurious floor from it.
 
-The paper defines two discrete severities per model (moderate/severe); bbobax
-samples the settings continuously across that span, so every model's default
-range runs from the moderate value to the severe one. A fixed model is
-therefore not a fixed difficulty -- only the family is fixed. When one batch
-genuinely has to mix families, `Mixture` restores that and states its cost.
+**Severity is continuous here, and that is a deviation.** The paper defines two
+discrete severities per model (moderate/severe) and the noisy suite pins each
+function to one of them; bbobax samples the settings continuously across that
+span instead, so difficulty varies per instance for free and a fixed model is
+not a fixed difficulty. That is what meta-learning wants and what published
+noisy-BBOB numbers are *not*: nothing here is comparable to a published
+f101-f130 result unless the severity is pinned. The paper's two points are
+therefore first-class -- `Gaussian.severe()`, `Cauchy.moderate()` -- and pin
+the settings exactly.
+
+Only the model family stays fixed on a problem. When one batch genuinely has to
+mix families, `Mixture` restores that and states its cost.
 """
 
 from typing import Any, Protocol, runtime_checkable
@@ -39,7 +46,7 @@ from flax.struct import dataclass
 
 # The target precision BBOB measures against, and the floor the official noise
 # models leave undisturbed (`bbobbenchmarks.py`: `tol = 1e-8`).
-TARGET_VALUE = 1e-8
+TARGET_PRECISION = 1e-8
 
 
 def _epsilon(value: jax.Array) -> float:
@@ -69,11 +76,11 @@ def stabilize(value: jax.Array, noisy: jax.Array) -> jax.Array:
         The stabilized value.
 
     """
-    return jnp.where(value < TARGET_VALUE, value, noisy + 1.01 * TARGET_VALUE)
+    return jnp.where(value < TARGET_PRECISION, value, noisy + 1.01 * TARGET_PRECISION)
 
 
 @runtime_checkable
-class Noise(Protocol):
+class NoiseModel(Protocol):
     """How a raw function value is disturbed.
 
     A protocol rather than a base class, exactly like `Descriptor`: the models
@@ -166,6 +173,16 @@ class Gaussian:
         """
         self.beta_range = beta_range
 
+    @classmethod
+    def moderate(cls) -> "Gaussian":
+        """Pin the paper's moderate severity: beta = 0.01."""
+        return cls(beta_range=(0.01, 0.01))
+
+    @classmethod
+    def severe(cls) -> "Gaussian":
+        """Pin the paper's severe severity: beta = 1."""
+        return cls(beta_range=(1.0, 1.0))
+
     def sample(self, key: jax.Array, num_dims: int) -> GaussianParams:
         """Sample beta."""
         return GaussianParams(
@@ -219,6 +236,16 @@ class Uniform:
         """
         self.alpha_range = alpha_range
         self.beta_range = beta_range
+
+    @classmethod
+    def moderate(cls) -> "Uniform":
+        """Pin the paper's moderate severity: alpha = 0.01(0.49 + 1/D), beta = 0.01."""
+        return cls(alpha_range=(0.01, 0.01), beta_range=(0.01, 0.01))
+
+    @classmethod
+    def severe(cls) -> "Uniform":
+        """Pin the paper's severe severity: alpha = 0.49 + 1/D, beta = 1."""
+        return cls(alpha_range=(1.0, 1.0), beta_range=(1.0, 1.0))
 
     def sample(self, key: jax.Array, num_dims: int) -> UniformParams:
         """Sample alpha and beta."""
@@ -277,6 +304,16 @@ class Cauchy:
         """
         self.alpha_range = alpha_range
         self.p_range = p_range
+
+    @classmethod
+    def moderate(cls) -> "Cauchy":
+        """Pin the paper's moderate severity: alpha = 0.01, p = 0.05."""
+        return cls(alpha_range=(0.01, 0.01), p_range=(0.05, 0.05))
+
+    @classmethod
+    def severe(cls) -> "Cauchy":
+        """Pin the paper's severe severity: alpha = 1, p = 0.2."""
+        return cls(alpha_range=(1.0, 1.0), p_range=(0.2, 0.2))
 
     def sample(self, key: jax.Array, num_dims: int) -> CauchyParams:
         """Sample alpha and p."""
@@ -362,7 +399,8 @@ class Mixture:
     batch of instances that disagree about which noise they carry. This
     restores exactly that, and is the only place in bbobax that pays for it:
 
-        problem = Sphere(num_dims=10, noise=Mixture(Gaussian(), Uniform(), Cauchy()))
+        models = Mixture(Gaussian(), Uniform(), Cauchy())
+        problem = Sphere(num_dims=10, noise_model=models)
 
     The cost is real and worth stating. `sample` draws every model's settings
     and `apply` selects with `lax.switch`, which under `vmap` over a varying
@@ -379,7 +417,7 @@ class Mixture:
 
     name = "mixture"
 
-    def __init__(self, *models: Noise):
+    def __init__(self, *models: NoiseModel):
         """Initialize the mixture.
 
         Args:
@@ -421,10 +459,10 @@ class Mixture:
 # The noise models, keyed by their own name. `Mixture` is deliberately absent:
 # it is a combinator over models rather than a model, and has no bare form.
 #
-# Left to inference rather than annotated `dict[str, type[Noise]]`: `Noise` is a
-# protocol, and a protocol's *data* members (here `name`) are not reachable
-# through `type[Noise]`. Inference keeps each concrete class, so the registry
-# stays introspectable and every entry still satisfies the protocol.
+# Left to inference rather than annotated `dict[str, type[NoiseModel]]`:
+# `NoiseModel` is a protocol, and a protocol's *data* members (here `name`) are
+# not reachable through `type[NoiseModel]`. Inference keeps each concrete class,
+# so the registry stays introspectable and every entry satisfies the protocol.
 _MODELS = (Noiseless, Gaussian, Uniform, Cauchy, Additive)
 
 NOISE_MODELS = {model.name: model for model in _MODELS}
