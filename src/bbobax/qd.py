@@ -520,7 +520,13 @@ class AlignedProjection(RandomProjection):
 # the module's order from baseline to coupled. The parallel of
 # `BBOB_PROBLEMS` and `NOISE_MODELS`: what lets a config name a descriptor
 # the way it names a function.
-_DESCRIPTORS: tuple[type[Descriptor], ...] = (
+#
+# Left to inference rather than annotated `dict[str, type[Descriptor]]`, for
+# the reason `NOISE_MODELS` records: a protocol's *data* members (here `name`)
+# are not reachable through `type[Descriptor]`. Inference keeps each concrete
+# class, so the registry stays introspectable and every entry satisfies the
+# protocol.
+_DESCRIPTORS = (
     RandomProjection,
     IrregularProjection,
     QuantizedProjection,
@@ -529,9 +535,7 @@ _DESCRIPTORS: tuple[type[Descriptor], ...] = (
     AlignedProjection,
 )
 
-DESCRIPTORS: dict[str, type[Descriptor]] = {
-    descriptor.name: descriptor for descriptor in _DESCRIPTORS
-}
+DESCRIPTORS = {descriptor.name: descriptor for descriptor in _DESCRIPTORS}
 
 
 def sphere_descriptor_optimum(
