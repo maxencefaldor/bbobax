@@ -58,8 +58,15 @@ And three in the noise models, against the noisy-functions paper:
   never drawn.
 - `Gallagher` is ~2.4x faster: its diagonal conditioning is carried as a vector
   and the quadratic form is evaluated as one matmul over all peaks.
+- Registries are `SCREAMING_CASE`, as module constants should be: `bbob_fns` ->
+  `BBOB_FNS`, plus `X_OPT_CONVENTIONS` and `NOISE_MODELS`. The noise functions
+  lose their redundant `_noise` suffix, so a registry key matches its function
+  name exactly (`"gaussian"` -> `gaussian`).
+- `NoiseParams` moved to `types.py` with every other dataclass, which removes a
+  circular import and the duplicate `IntScalar` alias it forced.
 - Tooling: `ty` replaces `mypy`; both it and ruff target 3.11, the oldest
-  supported version, while the dev environment runs 3.14.
+  supported version, while the dev environment runs 3.14. CI now runs ruff,
+  ty, the tests on 3.11-3.14, and executes every notebook.
 
 ## 0.1.0
 

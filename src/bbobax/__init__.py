@@ -6,12 +6,13 @@ from .bbob import (
     suite,
 )
 from .descriptor_fns import get_random_projection_descriptor
-from .fitness_fns import bbob_fns
-from .noise import NoiseModel, NoiseParams
+from .fitness_fns import BBOB_FNS
+from .noise import NoiseModel
 from .types import (
     BBOBEval,
     BBOBParams,
     BBOBState,
+    NoiseParams,
     QDBBOBEval,
     QDBBOBParams,
 )
@@ -27,6 +28,6 @@ __all__ = [
     "QDBBOBEval",
     "NoiseModel",
     "NoiseParams",
-    "bbob_fns",
+    "BBOB_FNS",
     "get_random_projection_descriptor",
 ]

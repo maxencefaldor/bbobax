@@ -1,7 +1,7 @@
 """Quality-Diversity Algorithms."""
 
 from functools import partial
-from typing import Any
+from typing import Any, TypeAlias
 
 import flax.struct
 import jax
@@ -10,11 +10,11 @@ from numpy.random import RandomState
 from sklearn.cluster import KMeans
 
 # Types
-type Genotype = Any
-type Fitness = jax.Array
-type Descriptor = jax.Array
-type RNGKey = jax.Array
-type Centroid = jax.Array
+Genotype: TypeAlias = Any
+Fitness: TypeAlias = jax.Array
+Descriptor: TypeAlias = jax.Array
+RNGKey: TypeAlias = jax.Array
+Centroid: TypeAlias = jax.Array
 
 
 # --- Metrics ---
@@ -576,7 +576,6 @@ class MAPElites(QDAlgorithm):
 if __name__ == "__main__":
     from bbobax import QDBBOB
     from bbobax.descriptor_fns import get_random_projection_descriptor
-    from bbobax.fitness_fns import bbob_fns
 
     # Configuration
     seed = 1

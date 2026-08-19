@@ -6,8 +6,8 @@ import pytest
 
 from bbobax.bbob import BBOB
 from bbobax.fitness_fns import (
+    BBOB_FNS,
     _lambda_alpha_vector,
-    bbob_fns,
     f_pen,
     transform_asy,
     transform_osz,
@@ -67,7 +67,7 @@ def test_f_pen():
     assert f_pen(x_out) == pytest.approx(1.0 + 9.0)
 
 
-@pytest.mark.parametrize("fn_name", bbob_fns.keys())
+@pytest.mark.parametrize("fn_name", BBOB_FNS.keys())
 def test_fitness_fn_shapes_and_optimum(fn_name, mock_state, mock_params):
     """Each fitness function returns scalars and bottoms out at x_opt.
 
@@ -76,7 +76,7 @@ def test_fitness_fn_shapes_and_optimum(fn_name, mock_state, mock_params):
     shape checks.
     """
     num_dims = 5
-    fn = bbob_fns[fn_name]
+    fn = BBOB_FNS[fn_name]
 
     # Shapes, on hand-built params with x_opt = 0 and r = q = I.
     val, pen = fn(jnp.zeros(num_dims), mock_state, mock_params(num_dims))
@@ -91,10 +91,10 @@ def test_fitness_fn_shapes_and_optimum(fn_name, mock_state, mock_params):
     assert float(val) + float(pen) == pytest.approx(0.0, abs=1e-9)
 
 
-@pytest.mark.parametrize("fn_name", bbob_fns.keys())
+@pytest.mark.parametrize("fn_name", BBOB_FNS.keys())
 def test_fitness_fn_jit_vmap(fn_name, mock_state, mock_params):
     """Test JAX transformations on fitness functions."""
-    fn = bbob_fns[fn_name]
+    fn = BBOB_FNS[fn_name]
     num_dims = 5
     batch_size = 10
 
@@ -127,7 +127,7 @@ def test_task_dimension_is_exact(num_dims):
     """
     key = jax.random.key(7)
 
-    for name, fn in bbob_fns.items():
+    for name, fn in BBOB_FNS.items():
         task = BBOB(name, num_dims=num_dims)
         assert task.sample_rotation is True
 

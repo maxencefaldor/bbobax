@@ -7,8 +7,8 @@ import pytest
 
 from bbobax.bbob import BBOB, QDBBOB, BBOBParams, BBOBState, QDBBOBParams, suite
 from bbobax.descriptor_fns import get_random_projection_descriptor
-from bbobax.fitness_fns import bbob_fns
-from bbobax.noise import noiseless_noise
+from bbobax.fitness_fns import BBOB_FNS
+from bbobax.noise import noiseless
 
 
 def test_bbob_initialization():
@@ -16,13 +16,13 @@ def test_bbob_initialization():
     # A name selects the function; the default dimension is BBOB's usual 10.
     task = BBOB("sphere")
     assert task.name == "sphere"
-    assert task.fitness_fn is bbob_fns["sphere"]
+    assert task.fitness_fn is BBOB_FNS["sphere"]
     assert task.num_dims == 10
 
     # num_dims is a single int, fixed for the task.
     task_custom = BBOB("rastrigin", num_dims=5)
     assert task_custom.num_dims == 5
-    assert task_custom.fitness_fn is bbob_fns["rastrigin"]
+    assert task_custom.fitness_fn is BBOB_FNS["rastrigin"]
 
     # A bare callable is accepted, and gets the raw x_opt draw.
     def my_fn(x, state, params):
@@ -145,7 +145,7 @@ def test_suite_builds_the_standard_24():
     """suite() is the 24 standard functions as 24 separate tasks."""
     tasks = suite(num_dims=6)
 
-    assert list(tasks) == list(bbob_fns)
+    assert list(tasks) == list(BBOB_FNS)
     assert len(tasks) == 24
 
     # 24 distinct task objects, each naming and holding its own function.
@@ -156,7 +156,7 @@ def test_suite_builds_the_standard_24():
         # The point of the refactor: the task holds the function directly, so
         # evaluation calls it -- no lax.switch over 24 branches, and nothing
         # pays for the 23 branches it does not want.
-        assert task.fitness_fn is bbob_fns[name]
+        assert task.fitness_fn is BBOB_FNS[name]
 
     # A subset is selectable, and kwargs reach every task.
     subset = suite(["sphere", "discus"], num_dims=3, clip_x=True)
@@ -207,7 +207,7 @@ def test_default_noise_is_noiseless():
     task = BBOB("sphere", num_dims=5)
 
     # Only the noiseless model is in the pool, and stabilization is off.
-    assert task.noise_model.noise_models == [noiseless_noise]
+    assert task.noise_model.active_models == [noiseless]
     assert task.noise_model.use_stabilization is False
 
     params = task.sample(jax.random.key(0))

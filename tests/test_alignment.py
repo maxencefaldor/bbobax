@@ -30,7 +30,7 @@ import numpy as np
 import pytest
 
 from _official import bbobbenchmarks as bb
-from bbobax.fitness_fns import bbob_fns
+from bbobax.fitness_fns import BBOB_FNS
 from bbobax.types import BBOBParams, BBOBState
 from conftest import zero_noise_params
 
@@ -252,7 +252,7 @@ def test_alignment_with_official(fid, num_dims, instance):
     rng = np.random.default_rng(97 * fid + 10 * D + instance)
     X = _test_points(rng, D, x_opt)
 
-    value, penalty = jax.vmap(bbob_fns[name], in_axes=(0, None, None))(
+    value, penalty = jax.vmap(BBOB_FNS[name], in_axes=(0, None, None))(
         jnp.asarray(X), state, params
     )
     ours = np.asarray(value) + np.asarray(penalty) + float(off.fopt)
@@ -374,7 +374,7 @@ def test_gallagher_matches_paper_formula(name, num_dims):
     w, diags, y = _gallagher_layout(name, D, instance_key, x_opt)
 
     X = _test_points(rng, D, x_opt)
-    value, penalty = jax.vmap(bbob_fns[name], in_axes=(0, None, None))(
+    value, penalty = jax.vmap(BBOB_FNS[name], in_axes=(0, None, None))(
         jnp.asarray(X), state, params
     )
     ours = np.asarray(value) + np.asarray(penalty)
@@ -383,7 +383,7 @@ def test_gallagher_matches_paper_formula(name, num_dims):
     np.testing.assert_allclose(ours, theirs, rtol=1e-12, atol=1e-12)
 
     # (d) f(y_1) == 0: the first peak is the global optimum with value 0.
-    v, p = bbob_fns[name](jnp.asarray(x_opt), state, params)
+    v, p = BBOB_FNS[name](jnp.asarray(x_opt), state, params)
     assert abs(float(v) + float(p)) <= 1e-9
 
 
@@ -402,7 +402,7 @@ def test_gallagher_layout_follows_key(name):
 
     def values(key):
         params, state = _make_params_state(D, x_opt, 0.0, R, np.eye(D), key=key)
-        v, p = jax.vmap(bbob_fns[name], in_axes=(0, None, None))(X, state, params)
+        v, p = jax.vmap(BBOB_FNS[name], in_axes=(0, None, None))(X, state, params)
         return np.asarray(v) + np.asarray(p)
 
     v1 = values(jax.random.key(1))
@@ -424,10 +424,10 @@ def test_gallagher_101_and_21_differ():
         D, x_opt, 0.0, R, np.eye(D), key=jax.random.key(3)
     )
 
-    v21, p21 = jax.vmap(bbob_fns["gallagher_101_me"], in_axes=(0, None, None))(
+    v21, p21 = jax.vmap(BBOB_FNS["gallagher_101_me"], in_axes=(0, None, None))(
         X, state, params
     )
-    v22, p22 = jax.vmap(bbob_fns["gallagher_21_hi"], in_axes=(0, None, None))(
+    v22, p22 = jax.vmap(BBOB_FNS["gallagher_21_hi"], in_axes=(0, None, None))(
         X, state, params
     )
     assert not np.allclose(np.asarray(v21), np.asarray(v22))

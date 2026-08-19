@@ -82,13 +82,13 @@ ignore = [
 	"F811",  # redefined-while-unused
 ]
 
-[tool.mypy]
-python_version = "3.13"
-disallow_untyped_defs = "True"
-disallow_any_unimported = "True"
-no_implicit_optional = "True"
-check_untyped_defs = "True"
-warn_return_any = "True"
-show_error_codes = "True"
-warn_unused_ignores = "True"
-exclude = ["docs/", "site/", "notebooks/", "tests/"]
+[tool.ty.environment]
+# Type-check against the oldest Python we support, not the one we run on, so a
+# 3.11 user cannot hit syntax or typing we only validated on 3.14.
+python-version = "3.11"
+
+[tool.ty.src]
+include = ["src", "tests", "scripts"]
+exclude = [
+	"tests/_official",  # vendored ground truth, not ours to type
+]

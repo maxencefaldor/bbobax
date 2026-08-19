@@ -3,9 +3,9 @@
 The three BBOB noise models (Gaussian, uniform, Cauchy) follow Hansen, Finck,
 Ros, Auger, "Real-Parameter Black-Box Optimization Benchmarking 2009: Noisy
 Functions Definitions" (INRIA RR-6869) and are verified against its formulas
-and the official ``bbobbenchmarks.py``. ``additive`` is a bbobax extension with
+and the official `bbobbenchmarks.py`. `additive` is a bbobax extension with
 no COCO counterpart. Noise applies to the raw function value only; the boundary
-penalty and f_opt are added outside it (``BBOB.evaluate``), as the paper
+penalty and f_opt are added outside it (`BBOB.evaluate`), as the paper
 prescribes.
 
 The paper defines two discrete severities per model (moderate/severe); bbobax
@@ -17,23 +17,8 @@ endpoints at every dimension.
 
 import jax
 import jax.numpy as jnp
-from flax.struct import dataclass
 
-# `types` imports this module, so the alias is spelled out rather than imported.
-IntScalar = int | jax.Array
-
-
-@dataclass
-class NoiseParams:
-    """Noise parameters."""
-
-    noise_id: jax.Array
-    gaussian_beta: jax.Array
-    uniform_alpha: jax.Array
-    uniform_beta: jax.Array
-    cauchy_alpha: jax.Array
-    cauchy_p: jax.Array
-    additive_std: jax.Array
+from .types import IntScalar, NoiseParams
 
 
 class NoiseModel:
@@ -68,23 +53,27 @@ class NoiseModel:
         Args:
             noise_model_names: Names of the noise models to sample among.
             noise_ranges: Overrides for parameter ranges, merged over
-                ``DEFAULT_RANGES``; a partial dictionary is fine.
+                `DEFAULT_RANGES`; a partial dictionary is fine.
             use_stabilization: Whether to use noise stabilization.
 
         """
-        unknown = set(noise_model_names) - set(noise_models)
+        unknown = set(noise_model_names) - set(NOISE_MODELS)
         if unknown:
             raise ValueError(
                 f"unknown noise models {sorted(unknown)}; "
-                f"available: {sorted(noise_models)}"
+                f"available: {sorted(NOISE_MODELS)}"
+            )
+        unknown = set(noise_ranges or {}) - set(self.DEFAULT_RANGES)
+        if unknown:
+            raise ValueError(
+                f"unknown noise ranges {sorted(unknown)}; "
+                f"available: {sorted(self.DEFAULT_RANGES)}"
             )
 
-        # Collect active noise models
-        self.noise_models = [
-            model for name, model in noise_models.items() if name in noise_model_names
+        self.active_models = [
+            model for name, model in NOISE_MODELS.items() if name in noise_model_names
         ]
-        self.noise_ids = jnp.arange(len(self.noise_models))
-
+        self.noise_ids = jnp.arange(len(self.active_models))
         self.noise_ranges = {**self.DEFAULT_RANGES, **(noise_ranges or {})}
 
         # Use noise stabilization close to optimal value
@@ -164,7 +153,7 @@ class NoiseModel:
         """Apply a noise model given its parameter settings."""
         fn_noise = jax.lax.switch(
             noise_params.noise_id,
-            self.noise_models,
+            self.active_models,
             key,
             fn_val,
             noise_params,
@@ -178,23 +167,23 @@ class NoiseModel:
 def stabilize(
     fn_val: jax.Array, fn_noise: jax.Array, target_value: float = 1e-08
 ) -> jax.Array:
-    """Stabilize final function value."""
-    # Return undisturbed function value if f is smaller than target value
-    return (fn_noise + 1.01 * target_value) * (fn_val >= target_value) + fn_val * (
-        fn_val < target_value
-    )
+    """Leave the value alone once it is within the target precision.
+
+    Below ``target_value`` the undisturbed value is returned, so noise cannot
+    stop an algorithm from reaching the target; above it, the paper's
+    ``1.01 * target_value`` offset is added.
+    """
+    return jnp.where(fn_val < target_value, fn_val, fn_noise + 1.01 * target_value)
 
 
-def noiseless_noise(
+def noiseless(
     key: jax.Array, fn_val: jax.Array, noise_params: NoiseParams
 ) -> jax.Array:
-    """Apply noiseless noise."""
+    """Return the value unchanged."""
     return fn_val
 
 
-def gaussian_noise(
-    key: jax.Array, fn_val: jax.Array, noise_params: NoiseParams
-) -> jax.Array:
+def gaussian(key: jax.Array, fn_val: jax.Array, noise_params: NoiseParams) -> jax.Array:
     """Apply Gaussian noise."""
     # Moderate noise: beta = 0.01
     # Severe noise: beta = 1
@@ -203,9 +192,7 @@ def gaussian_noise(
     )
 
 
-def uniform_noise(
-    key: jax.Array, fn_val: jax.Array, noise_params: NoiseParams
-) -> jax.Array:
+def uniform(key: jax.Array, fn_val: jax.Array, noise_params: NoiseParams) -> jax.Array:
     """Apply uniform noise."""
     # Moderate noise: alpha = 0.01 * (0.49 + 1/D), beta = 0.01
     # Severe noise: alpha = 0.49 + 1/D, beta = 1.0
@@ -222,9 +209,7 @@ def uniform_noise(
     return fn_val * f_1 * jnp.maximum(1.0, f_2)
 
 
-def cauchy_noise(
-    key: jax.Array, fn_val: jax.Array, noise_params: NoiseParams
-) -> jax.Array:
+def cauchy(key: jax.Array, fn_val: jax.Array, noise_params: NoiseParams) -> jax.Array:
     """Apply Cauchy noise."""
     # Moderate noise: alpha = 0.01, p = 0.05
     # Severe noise: alpha = 1, p = 0.2
@@ -242,9 +227,7 @@ def cauchy_noise(
     )
 
 
-def additive_noise(
-    key: jax.Array, fn_val: jax.Array, noise_params: NoiseParams
-) -> jax.Array:
+def additive(key: jax.Array, fn_val: jax.Array, noise_params: NoiseParams) -> jax.Array:
     """Apply additive noisification."""
     # Moderate noise: std = 0.01
     # Severe noise: std = 1
@@ -253,10 +236,11 @@ def additive_noise(
     )
 
 
-noise_models = {
-    "noiseless": noiseless_noise,
-    "gaussian": gaussian_noise,
-    "uniform": uniform_noise,
-    "cauchy": cauchy_noise,
-    "additive": additive_noise,
+# The registry a NoiseModel selects from. Keys match the function names.
+NOISE_MODELS = {
+    "noiseless": noiseless,
+    "gaussian": gaussian,
+    "uniform": uniform,
+    "cauchy": cauchy,
+    "additive": additive,
 }

@@ -9,45 +9,62 @@ on:
       - main
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --extra dev
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format
+        run: uv run ruff format --check .
+
+      - name: ty
+        run: uv run ty check
+
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        # The full supported range: 3.11 is the floor both ruff and ty target,
+        # 3.14 is what the dev environment runs (.python-version).
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Install
+        run: uv sync --extra dev --python ${{ matrix.python-version }}
+
+      - name: Test
+        # The alignment suite compares every function against the vendored
+        # official implementation, so a numeric regression fails here.
+        run: uv run pytest tests/ --cov=bbobax --cov-report=term-missing
+
+  notebooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          enable-cache: true
 
-      - name: Install dependencies
-        run: |
-          uv venv
-          source .venv/bin/activate
-          uv pip install -e ".[dev]"
+      - run: uv sync --extra dev --extra notebooks
 
-      - name: Run linting (ruff)
-        run: |
-          source .venv/bin/activate
-          ruff check .
-          ruff format --check .
-
-      - name: Run type checking (mypy)
-        continue-on-error: true
-        run: |
-          source .venv/bin/activate
-          mypy .
-
-      - name: Run tests
-        run: |
-          source .venv/bin/activate
-          pytest tests/ --cov=bbobax --cov-report=xml
-
+      - name: Execute notebooks
+        # Every notebook is documentation that has to keep working. The %pip
+        # cells are skipped: the environment is already installed.
+        run: uv run python scripts/run_notebooks.py

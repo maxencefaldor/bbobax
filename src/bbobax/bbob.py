@@ -5,7 +5,7 @@ import dataclasses
 import jax
 import jax.numpy as jnp
 
-from .fitness_fns import bbob_fns, x_opt_conventions
+from .fitness_fns import BBOB_FNS, X_OPT_CONVENTIONS
 from .noise import NoiseModel
 from .types import (
     BBOBEval,
@@ -23,13 +23,13 @@ class BBOB:
 
     That is COCO's own structure -- a suite enumerates function x dimension x
     instance, and only the instance is drawn. A task here fixes the function
-    and the dimension; ``sample`` draws an instance of it.
+    and the dimension; `sample` draws an instance of it.
 
     To cover many functions or many dimensions, hold many tasks and loop over
-    them (``bbobax.suite`` builds the standard 24). Under ``jit`` that loop
+    them (`bbobax.suite` builds the standard 24). Under `jit` that loop
     unrolls, so each task keeps its own compiled code and nothing pays for
     dispatch -- unlike a single task that switches over functions, which under
-    ``vmap`` must evaluate every branch for every solution.
+    `vmap` must evaluate every branch for every solution.
     """
 
     def __init__(
@@ -47,8 +47,8 @@ class BBOB:
 
         Args:
             fitness_fn: The name of a standard BBOB function (a key of
-                ``bbob_fns``), or a callable of your own. A name also selects
-                the function's x_opt convention, so ``params.x_opt`` is the
+                `BBOB_FNS`), or a callable of your own. A name also selects
+                the function's x_opt convention, so `params.x_opt` is the
                 true argmin; a bare callable gets the raw draw.
             num_dims: The problem dimension, at least 2 as BBOB requires.
             x_range: Range of input variables.
@@ -68,19 +68,19 @@ class BBOB:
                 noiseless BBOB; pass a config to opt into noise.
 
         Raises:
-            KeyError: If ``fitness_fn`` names no standard BBOB function.
-            ValueError: If ``num_dims`` is below 2.
+            KeyError: If `fitness_fn` names no standard BBOB function.
+            ValueError: If `num_dims` is below 2.
 
         """
         if isinstance(fitness_fn, str):
-            if fitness_fn not in bbob_fns:
+            if fitness_fn not in BBOB_FNS:
                 raise KeyError(
                     f"{fitness_fn!r} is not a BBOB function; "
-                    f"available: {sorted(bbob_fns)}"
+                    f"available: {sorted(BBOB_FNS)}"
                 )
             self.name = fitness_fn
-            self.fitness_fn = bbob_fns[fitness_fn]
-            self.x_opt_convention = x_opt_conventions.get(
+            self.fitness_fn = BBOB_FNS[fitness_fn]
+            self.x_opt_convention = X_OPT_CONVENTIONS.get(
                 fitness_fn, lambda x_opt: x_opt
             )
         else:
@@ -111,7 +111,7 @@ class BBOB:
 
         The raw uniform x_opt draw is reshaped by the function's own
         convention (sign vectors, scalings, sign-forcing -- see
-        ``x_opt_conventions``), so ``params.x_opt`` is the true argmin, the
+        `X_OPT_CONVENTIONS`), so `params.x_opt` is the true argmin, the
         same invariant COCO keeps by storing the post-convention optimum.
 
         Args:
@@ -174,7 +174,7 @@ class BBOB:
 
         Args:
             key: JAX random key.
-            x: Input solution, shape ``(num_dims,)``.
+            x: Input solution, shape `(num_dims,)`.
             state: Current task state.
             params: Instance parameters.
 
@@ -202,7 +202,7 @@ class BBOB:
             key: JAX random key.
 
         Returns:
-            Random solution within the defined range, shape ``(num_dims,)``.
+            Random solution within the defined range, shape `(num_dims,)`.
 
         """
         return jax.random.uniform(
@@ -221,7 +221,7 @@ class BBOB:
             num_dims: Size of the matrix.
 
         Returns:
-            An orthogonal ``(num_dims, num_dims)`` matrix of determinant +1.
+            An orthogonal `(num_dims, num_dims)` matrix of determinant +1.
 
         """
         # QR of a Gaussian matrix with the sign correction that makes it Haar
@@ -302,7 +302,7 @@ class QDBBOB(BBOB):
 
         Args:
             key: JAX random key.
-            x: Input solution, shape ``(num_dims,)``.
+            x: Input solution, shape `(num_dims,)`.
             state: Current task state.
             params: Instance parameters.
 
@@ -317,14 +317,14 @@ class QDBBOB(BBOB):
     def generate_gaussian_projection(self, key: jax.Array) -> jax.Array:
         """Generate the instance's random Gaussian projection matrix.
 
-        Entries are ``N(0, 1) / sqrt(descriptor_size)``, so the projection
+        Entries are `N(0, 1) / sqrt(descriptor_size)`, so the projection
         preserves expected squared norms.
 
         Args:
             key: JAX random key.
 
         Returns:
-            A ``(descriptor_size, num_dims)`` matrix.
+            A `(descriptor_size, num_dims)` matrix.
 
         """
         return jax.random.normal(
@@ -338,11 +338,11 @@ def suite(names: list[str] | None = None, **kwargs) -> dict[str, BBOB]:
     Args:
         names: Which functions to include; defaults to all 24, in the
             canonical f1-f24 order.
-        **kwargs: Passed to every task (``num_dims``, ``noise_config``, ...).
+        **kwargs: Passed to every task (`num_dims`, `noise_config`, ...).
 
     Returns:
         A mapping from function name to task. Loop over it to cover the suite:
         each task compiles separately, so nothing pays for dispatch.
 
     """
-    return {name: BBOB(name, **kwargs) for name in (names or list(bbob_fns))}
+    return {name: BBOB(name, **kwargs) for name in (names or list(BBOB_FNS))}

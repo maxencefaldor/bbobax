@@ -1,20 +1,20 @@
 """Black-box Optimization Benchmarking Functions Definitions.
 
 Every function is verified numerically against the official 2009 BBOB
-implementation (``bbobbenchmarks.py``) on identical instances in float64 -- see
-``tests/test_alignment.py``. Where the paper (Hansen, Finck, Ros, Auger,
+implementation (`bbobbenchmarks.py`) on identical instances in float64 -- see
+`tests/test_alignment.py`. Where the paper (Hansen, Finck, Ros, Auger,
 INRIA RR-6829) and the official code disagree, the code wins, with a comment at
 the site: the code is what every published BBOB result actually ran.
 
 Two conventions to know:
 
-- Functions receive fully prepared ``params``: ``params.x_opt`` is the true
+- Functions receive fully prepared `params`: `params.x_opt` is the true
   argmin of every function. The per-function x_opt conventions of the official
   suite (sign vectors, scalings, component sign-forcing) are applied at sampling
-  time via ``x_opt_conventions``, mirroring how COCO stores the post-convention
+  time via `X_OPT_CONVENTIONS`, mirroring how COCO stores the post-convention
   optimum. Hand-built params should apply the matching convention first.
-- Functions return ``(value, penalty)`` with the optimum at value 0; ``f_opt``
-  is added by ``BBOB.evaluate``, and noise applies to the value only.
+- Functions return `(value, penalty)` with the optimum at value 0; `f_opt`
+  is added by `BBOB.evaluate`, and noise applies to the value only.
 """
 
 from collections.abc import Callable
@@ -27,7 +27,7 @@ from .types import BBOBParams, BBOBState, FitnessFn
 
 
 def _lambda_alpha_vector(alpha: float, num_dims: int) -> jax.Array:
-    """Return the conditioning vector ``alpha ** (0.5 i / (D - 1))``."""
+    """Return the conditioning vector `alpha ** (0.5 i / (D - 1))`."""
     exp = 0.5 * jnp.arange(num_dims) / (num_dims - 1)
     return jnp.power(alpha, exp)
 
@@ -50,9 +50,9 @@ def transform_osz(element: jax.Array) -> jax.Array:
 def transform_asy(x: jax.Array, beta: float) -> jax.Array:
     """Asymmetry transformation function.
 
-    The untaken branch is sanitized before ``sqrt``/``power`` so that
-    ``jax.grad`` through negative coordinates yields zeros instead of NaN
-    (the standard double-``where`` guard); values are unchanged.
+    The untaken branch is sanitized before `sqrt`/`power` so that
+    `jax.grad` through negative coordinates yields zeros instead of NaN
+    (the standard double-`where` guard); values are unchanged.
     """
     num_dims = x.shape[0]
 
@@ -149,7 +149,7 @@ def linear_slope(
     num_dims = x.shape[0]
 
     # params.x_opt is the true optimum: +-5 per coordinate, applied by the
-    # sampling convention (see x_opt_conventions).
+    # sampling convention (see X_OPT_CONVENTIONS).
     x_opt = params.x_opt
 
     z = jnp.where(x * x_opt < 25.0, x, x_opt)
@@ -347,16 +347,16 @@ def weierstrass(
     return 10 * (out / num_dims - _WEIERSTRASS_F_0) ** 3, 10 * f_pen(x) / num_dims
 
 
-def schaffers_f7(
-    x: jax.Array, state: BBOBState, params: BBOBParams
+def _schaffers(
+    x: jax.Array, params: BBOBParams, conditioning: float
 ) -> tuple[jax.Array, jax.Array]:
-    """Schaffers F7 Function (Hansen et al., 2010, p. 85)."""
+    """Schaffers F7, shared by the two conditionings."""
     num_dims = x.shape[0]
 
     z = params.r @ (x - params.x_opt)
     z = transform_asy(z, 0.5)
     z = params.q @ z
-    z = _lambda_alpha_vector(10.0, num_dims) * z
+    z = _lambda_alpha_vector(conditioning, num_dims) * z
 
     z_i = z[:-1]
     z_ip1 = jnp.roll(z, -1)[:-1]
@@ -366,27 +366,20 @@ def schaffers_f7(
     # The sum runs over D - 1 consecutive pairs; guard the degenerate D = 1.
     num_pairs = num_dims - 1.0
     return (out / num_pairs) ** 2, 10 * f_pen(x)
+
+
+def schaffers_f7(
+    x: jax.Array, state: BBOBState, params: BBOBParams
+) -> tuple[jax.Array, jax.Array]:
+    """Schaffers F7 Function (Hansen et al., 2010, p. 85)."""
+    return _schaffers(x, params, conditioning=10.0)
 
 
 def schaffers_f7_ill_conditioned(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
     """Schaffers F7 Function, ill-conditioned (Hansen et al., 2010, p. 90)."""
-    num_dims = x.shape[0]
-
-    z = params.r @ (x - params.x_opt)
-    z = transform_asy(z, 0.5)
-    z = params.q @ z
-    z = _lambda_alpha_vector(1000.0, num_dims) * z
-
-    z_i = z[:-1]
-    z_ip1 = jnp.roll(z, -1)[:-1]
-    s = jnp.sqrt(jnp.square(z_i) + jnp.square(z_ip1))
-
-    out = jnp.sum(jnp.sqrt(s) + jnp.sqrt(s) * jnp.sin(50 * s**0.2) ** 2)
-    # The sum runs over D - 1 consecutive pairs; guard the degenerate D = 1.
-    num_pairs = num_dims - 1.0
-    return (out / num_pairs) ** 2, 10 * f_pen(x)
+    return _schaffers(x, params, conditioning=1000.0)
 
 
 def griewank_rosenbrock(
@@ -439,18 +432,25 @@ def schwefel(
     )
 
 
-def gallagher_101_me(
-    x: jax.Array, state: BBOBState, params: BBOBParams
+def _gallagher(
+    x: jax.Array,
+    params: BBOBParams,
+    num_optima: int,
+    first_alpha: float,
+    y_range: float,
+    fold: int,
 ) -> tuple[jax.Array, jax.Array]:
-    """Gallagher's Gaussian 101-me Peaks Function (Hansen et al., 2010, p. 105)."""
-    num_dims = x.shape[0]
+    """Gallagher's Gaussian peaks, shared by the 101-me and 21-hi variants.
 
-    num_optima = 101
-    # The peak layout is instance data, drawn from the instance's own key.
-    # (An earlier version derived entropy from fold_in(key(0), q[0,0]); fold_in
-    # int-casts the float and |q00| <= 1 for any rotation, so every rotated
-    # instance shared one frozen layout.)
-    key = jax.random.fold_in(params.key, 21)
+    The peak layout -- which conditioning goes to which peak, how each one is
+    permuted, and where the peaks sit -- is instance data, drawn from the
+    instance's own key. (An earlier version derived it from
+    ``fold_in(key(0), q[0, 0])``; ``fold_in`` int-casts the float and
+    ``|q00| <= 1`` for any rotation, so every rotated instance shared one
+    frozen layout.) ``fold`` separates the two variants' layouts.
+    """
+    num_dims = x.shape[0]
+    key = jax.random.fold_in(params.key, fold)
 
     w = jnp.where(
         jnp.arange(num_optima) == 0,
@@ -458,12 +458,15 @@ def gallagher_101_me(
         1.1 + 8.0 * (jnp.arange(num_optima) - 1.0) / (num_optima - 2.0),
     )
 
-    alpha = jnp.zeros(num_optima)
     alpha_set = jnp.power(1000.0, 2.0 * jnp.arange(num_optima - 1) / (num_optima - 2))
     key, subkey = jax.random.split(key)
-    alpha_permuted = jax.random.permutation(subkey, alpha_set)
-    alpha = alpha.at[0].set(1000.0)
-    alpha = alpha.at[1:].set(alpha_permuted)
+    alpha = (
+        jnp.zeros(num_optima)
+        .at[0]
+        .set(first_alpha)
+        .at[1:]
+        .set(jax.random.permutation(subkey, alpha_set))
+    )
     # C_i is diagonal, so carry the diagonal alone: (num_optima, D) rather than
     # (num_optima, D, D).
     c = jax.vmap(lambda alpha: _lambda_alpha_vector(alpha, num_dims) / alpha**0.25)(
@@ -472,22 +475,11 @@ def gallagher_101_me(
 
     key, subkey = jax.random.split(key)
     keys = jax.random.split(subkey, num_optima)
-
-    def permute_diag(c_i, key):
-        perm = jax.random.permutation(key, num_dims)
-        return c_i[perm]
-
-    c = jax.vmap(permute_diag)(c, keys)
+    c = jax.vmap(lambda c_i, k: c_i[jax.random.permutation(k, num_dims)])(c, keys)
 
     key, subkey = jax.random.split(key)
     y = jax.random.uniform(
-        subkey,
-        shape=(
-            num_optima,
-            num_dims,
-        ),
-        minval=-5.0,
-        maxval=5.0,
+        subkey, shape=(num_optima, num_dims), minval=-y_range, maxval=y_range
     )
     y = y.at[0].set(params.x_opt)
 
@@ -495,70 +487,29 @@ def gallagher_101_me(
     # diagonal makes that sum(c_i * z**2). All peaks at once: one (num_optima, D)
     # by (D, D) matmul instead of three matrix-vector products per peak.
     z = (x - y) @ params.r.T
-    out = jnp.sum(c * jnp.square(z), axis=-1)
-    out = w * jnp.exp(-out / (2 * num_dims))
+    out = w * jnp.exp(-jnp.sum(c * jnp.square(z), axis=-1) / (2 * num_dims))
     return jnp.square(transform_osz(10.0 - jnp.max(out))), f_pen(x)
+
+
+def gallagher_101_me(
+    x: jax.Array, state: BBOBState, params: BBOBParams
+) -> tuple[jax.Array, jax.Array]:
+    """Gallagher's Gaussian 101-me Peaks Function (Hansen et al., 2010, p. 105)."""
+    return _gallagher(
+        x, params, num_optima=101, first_alpha=1000.0, y_range=5.0, fold=21
+    )
 
 
 def gallagher_21_hi(
     x: jax.Array, state: BBOBState, params: BBOBParams
 ) -> tuple[jax.Array, jax.Array]:
-    """Gallagher's Gaussian 21-hi Peaks Function (Hansen et al., 2010, p. 110)."""
-    num_dims = x.shape[0]
+    """Gallagher's Gaussian 21-hi Peaks Function (Hansen et al., 2010, p. 110).
 
-    # params.x_opt is the true optimum, already scaled by 0.98 at sampling time.
-    x_opt = params.x_opt
-
-    num_optima = 21
-    # See gallagher_101_me: the layout comes from the instance's own key.
-    key = jax.random.fold_in(params.key, 22)
-
-    w = jnp.where(
-        jnp.arange(num_optima) == 0,
-        10.0,
-        1.1 + 8.0 * (jnp.arange(num_optima) - 1.0) / (num_optima - 2.0),
+    ``params.x_opt`` is the true optimum, already scaled by 0.98 at sampling.
+    """
+    return _gallagher(
+        x, params, num_optima=21, first_alpha=1000.0**2, y_range=4.9, fold=22
     )
-
-    alpha = jnp.zeros(num_optima)
-    alpha_set = jnp.power(1000.0, 2.0 * jnp.arange(num_optima - 1) / (num_optima - 2))
-    key, subkey = jax.random.split(key)
-    alpha_permuted = jax.random.permutation(subkey, alpha_set)
-    alpha = alpha.at[0].set(1000.0**2)
-    alpha = alpha.at[1:].set(alpha_permuted)
-    # C_i is diagonal, so carry the diagonal alone: (num_optima, D) rather than
-    # (num_optima, D, D).
-    c = jax.vmap(lambda alpha: _lambda_alpha_vector(alpha, num_dims) / alpha**0.25)(
-        alpha
-    )
-
-    key, subkey = jax.random.split(key)
-    keys = jax.random.split(subkey, num_optima)
-
-    def permute_diag(c_i, key):
-        perm = jax.random.permutation(key, num_dims)
-        return c_i[perm]
-
-    c = jax.vmap(permute_diag)(c, keys)
-
-    key, subkey = jax.random.split(key)
-    y = jax.random.uniform(
-        subkey,
-        shape=(
-            num_optima,
-            num_dims,
-        ),
-        minval=-4.9,
-        maxval=4.9,
-    )
-    y = y.at[0].set(x_opt)
-
-    # (x - y_i)^T R^T C_i R (x - y_i) = z^T C_i z with z = R(x - y_i), and C_i
-    # diagonal makes that sum(c_i * z**2). All peaks at once: one (num_optima, D)
-    # by (D, D) matmul instead of three matrix-vector products per peak.
-    z = (x - y) @ params.r.T
-    out = jnp.sum(c * jnp.square(z), axis=-1)
-    out = w * jnp.exp(-out / (2 * num_dims))
-    return jnp.square(transform_osz(10.0 - jnp.max(out))), f_pen(x)
 
 
 def katsuura(
@@ -616,10 +567,6 @@ def lunacek(
     ), 10.0**4 * f_pen(x)
 
 
-def _x_opt_identity(x_opt: jax.Array) -> jax.Array:
-    return x_opt
-
-
 def _x_opt_bueche_rastrigin(x_opt: jax.Array) -> jax.Array:
     # The officials force the skewed (0-based even) coordinates non-negative
     # (f_bueche_rastrigin.c:81-84, "in the legacy code but _not_ in the function
@@ -653,10 +600,10 @@ def _x_opt_lunacek(x_opt: jax.Array) -> jax.Array:
 
 
 # Per-function preparation of a raw uniform x_opt draw, applied by
-# ``BBOB.sample`` so that ``params.x_opt`` is always the function's true argmin
+# `BBOB.sample` so that `params.x_opt` is always the function's true argmin
 # -- the invariant COCO keeps by storing the post-convention optimum. Functions
 # absent from this mapping use the draw unchanged.
-x_opt_conventions: dict[str, Callable[[jax.Array], jax.Array]] = {
+X_OPT_CONVENTIONS: dict[str, Callable[[jax.Array], jax.Array]] = {
     "bueche_rastrigin": _x_opt_bueche_rastrigin,
     "linear_slope": _x_opt_linear_slope,
     "rosenbrock": _x_opt_rosenbrock,
@@ -666,7 +613,8 @@ x_opt_conventions: dict[str, Callable[[jax.Array], jax.Array]] = {
 }
 
 
-bbob_fns: dict[str, FitnessFn] = {
+# The 24 standard BBOB functions, in canonical f1-f24 order.
+BBOB_FNS: dict[str, FitnessFn] = {
     # Part 1: Separable functions
     "sphere": sphere,
     "ellipsoidal": ellipsoidal,
