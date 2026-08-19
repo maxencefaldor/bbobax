@@ -51,7 +51,14 @@ jobs:
       - name: Test
         # The alignment suite compares every function against the vendored
         # official implementation, so a numeric regression fails here.
-        run: uv run pytest tests/ --cov=bbobax --cov-report=term-missing
+        #
+        # `uv run` re-resolves the interpreter from .python-version unless
+        # told otherwise, which would silently rebuild the environment the
+        # Install step just made -- without the dev extra, hence without
+        # pytest. Naming both keeps the step self-sufficient.
+        run: >
+          uv run --python ${{ matrix.python-version }} --extra dev
+          pytest tests/ --cov=bbobax --cov-report=term-missing
 
   notebooks:
     runs-on: ubuntu-latest
