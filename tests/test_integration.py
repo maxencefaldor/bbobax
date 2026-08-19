@@ -3,8 +3,7 @@
 import jax
 import jax.numpy as jnp
 
-from bbobax.bbob import suite
-from bbobax.problem import DIMENSIONS
+from bbobax.bbob import DIMENSIONS, suite
 from bbobax.qd import QDProblem, RandomProjection
 
 

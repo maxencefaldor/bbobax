@@ -7,12 +7,7 @@ import pytest
 
 from bbobax.bbob import BBOB_PROBLEMS, Rastrigin, Sphere, suite
 from bbobax.noise import Noiseless
-from bbobax.problem import DIMENSIONS, BBOBEval, BBOBParams, BBOBProblem
-
-
-def test_dimensions_are_cocos():
-    """DIMENSIONS is COCO's own suite dimension set."""
-    assert DIMENSIONS == (2, 3, 5, 10, 20, 40)
+from bbobax.problem import BBOBEval, BBOBParams, BBOBProblem
 
 
 def test_problem_initialization():

@@ -27,16 +27,6 @@ from flax.struct import dataclass
 
 from .noise import Noiseless, NoiseModel
 
-# The dimensions COCO's suites enumerate, from `suite_bbob.c`:
-# `const size_t dimensions[] = { 2, 3, 5, 10, 20, 40 };`.
-#
-# Array shapes are static in JAX, so a problem fixes its dimension and callers
-# that want several loop over these in Python. For meta-learning that loop is
-# an advantage over sampling a dimension: every meta-step sees every dimension,
-# which is stratified rather than noisy, and there are only six compilations to
-# cache. It does require the learned parameters to be dimension-independent.
-DIMENSIONS: tuple[int, ...] = (2, 3, 5, 10, 20, 40)
-
 
 @dataclass
 class BBOBParams:

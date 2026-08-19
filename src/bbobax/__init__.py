@@ -2,6 +2,7 @@
 
 from .bbob import (
     BBOB_PROBLEMS,
+    DIMENSIONS,
     AttractiveSector,
     BentCigar,
     BuecheRastrigin,
@@ -39,7 +40,7 @@ from .noise import (
     Uniform,
 )
 from .noisy import NOISY_PROBLEMS, Noisy, noisy_suite
-from .problem import DIMENSIONS, BBOBEval, BBOBParams, BBOBProblem
+from .problem import BBOBEval, BBOBParams, BBOBProblem
 from .qd import Descriptor, QDEval, QDParams, QDProblem, RandomProjection
 from .transforms import f_pen, lambda_alpha, transform_asy, transform_osz
 

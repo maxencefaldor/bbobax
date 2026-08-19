@@ -748,6 +748,19 @@ BBOB_PROBLEMS: dict[str, type[BBOBProblem]] = {
     problem.name: problem for problem in _PROBLEMS
 }
 
+# The dimensions the bbob suite enumerates, from `suite_bbob.c`:
+# `const size_t dimensions[] = { 2, 3, 5, 10, 20, 40 };`. The 2009 noisy
+# testbed ran the same six, so `noisy.py` shares this constant -- but in COCO
+# the dimension set is per-suite, not universal (bbob-largescale enumerates
+# {20, ..., 640}), which is why it lives with a suite and not in `problem.py`.
+#
+# Array shapes are static in JAX, so a problem fixes its dimension and callers
+# that want several loop over these in Python. For meta-learning that loop is
+# an advantage over sampling a dimension: every meta-step sees every dimension,
+# which is stratified rather than noisy, and there are only six compilations to
+# cache. It does require the learned parameters to be dimension-independent.
+DIMENSIONS: tuple[int, ...] = (2, 3, 5, 10, 20, 40)
+
 
 def suite(names: list[str] | None = None, **kwargs) -> dict[str, BBOBProblem]:
     """Build the standard BBOB functions as individual problems.

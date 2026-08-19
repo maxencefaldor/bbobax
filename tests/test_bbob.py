@@ -10,10 +10,16 @@ import pytest
 
 from bbobax.bbob import (
     BBOB_PROBLEMS,
+    DIMENSIONS,
     SchaffersF7,
     SchaffersF7IllConditioned,
 )
-from bbobax.problem import DIMENSIONS, BBOBProblem
+from bbobax.problem import BBOBProblem
+
+
+def test_dimensions_are_cocos():
+    """DIMENSIONS is the bbob suite's own dimension set, from `suite_bbob.c`."""
+    assert DIMENSIONS == (2, 3, 5, 10, 20, 40)
 
 
 def test_registry_is_the_standard_24():

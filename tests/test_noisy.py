@@ -12,14 +12,14 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from bbobax.bbob import EllipsoidalRotated, GriewankRosenbrock
+from bbobax.bbob import DIMENSIONS, EllipsoidalRotated, GriewankRosenbrock
 from bbobax.noisy import (
     NOISY_PROBLEMS,
     _Ellipsoid1e4,
     _GriewankRosenbrock1,
     noisy_suite,
 )
-from bbobax.problem import DIMENSIONS, BBOBProblem
+from bbobax.problem import BBOBProblem
 from bbobax.transforms import f_pen
 
 # How the official class names map onto bbobax's. `_FRosenbrock` is F8's base,

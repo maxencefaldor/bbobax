@@ -12,9 +12,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from bbobax.bbob import BBOB_PROBLEMS
+from bbobax.bbob import BBOB_PROBLEMS, DIMENSIONS
 from bbobax.many_affine import ManyAffine
-from bbobax.problem import DIMENSIONS
 
 # `many_affine.hpp`: `default_scales`, in canonical f1-f24 order.
 OFFICIAL_SCALES = (
