@@ -46,10 +46,11 @@ nav:
   - Home: index.md
   - Tutorials:
       - Getting Started: notebooks/00_getting_started.ipynb
-      - BBOB Basics: notebooks/01_bbob.ipynb
+      - The Suites: notebooks/01_suites.ipynb
       - Black-Box Optimization: notebooks/02_bbo.ipynb
-      - Meta-BBO: notebooks/03_meta_bbo.ipynb
-      - Quality-Diversity: notebooks/04_qd.ipynb
+      - Benchmarking: notebooks/03_benchmarking.ipynb
+      - Meta-BBO: notebooks/04_meta_bbo.ipynb
+      - Quality-Diversity: notebooks/05_qd.ipynb
   - API Reference:
       - Problem: reference/problem.md
       - Functions: reference/functions.md
