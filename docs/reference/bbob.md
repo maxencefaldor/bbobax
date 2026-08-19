@@ -1,4 +1,0 @@
-# BBOB
-
-::: bbobax.BBOB
-

@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from bbobax.types import BBOBParams, BBOBState, NoiseParams, QDBBOBParams
+from bbobax.types import BBOBParams, NoiseParams
 
 # The whole suite runs in float64: the alignment tests (tests/test_alignment.py)
 # compare against the official 2009 implementation at 1e-9 relative error, and
@@ -28,49 +28,21 @@ def zero_noise_params() -> NoiseParams:
 
 
 @pytest.fixture
-def mock_state():
-    """Create a mock BBOB state."""
-    return BBOBState(counter=0)
-
-
-@pytest.fixture
 def mock_params():
     """Create mock BBOB parameters factory.
 
-    One task = one function at one fixed dimension, so the instance carries no
-    function id and no dimension: every array is exactly ``num_dims`` long.
+    One problem = one function at one fixed dimension, so the instance carries
+    no function id and no dimension: every array is exactly ``num_dims`` long.
     """
 
     def _get_mock_params(num_dims: int) -> BBOBParams:
         return BBOBParams(
+            key=jax.random.key(0),
             x_opt=jnp.zeros(num_dims),
             f_opt=jnp.array(0.0),
             r=jnp.eye(num_dims),
             q=jnp.eye(num_dims),
-            key=jax.random.key(0),
             noise_params=zero_noise_params(),
         )
 
     return _get_mock_params
-
-
-@pytest.fixture
-def mock_qdbbob_params():
-    """Create mock QD-BBOB parameters factory."""
-
-    def _get_mock_qdbbob_params(num_dims: int, descriptor_size: int) -> QDBBOBParams:
-        # Create random projection matrix
-        key = jax.random.key(0)
-        descriptor_params = jax.random.normal(key, (descriptor_size, num_dims))
-
-        return QDBBOBParams(
-            x_opt=jnp.zeros(num_dims),
-            f_opt=jnp.array(0.0),
-            r=jnp.eye(num_dims),
-            q=jnp.eye(num_dims),
-            key=jax.random.key(0),
-            noise_params=zero_noise_params(),
-            descriptor_params=descriptor_params,
-        )
-
-    return _get_mock_qdbbob_params

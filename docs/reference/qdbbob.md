@@ -1,4 +1,0 @@
-# QDBBOB
-
-::: bbobax.QDBBOB
-

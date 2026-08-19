@@ -1,33 +1,79 @@
 """Black-box Optimization Benchmarking in JAX."""
 
-from .bbob import (
-    BBOB,
-    QDBBOB,
+from .functions import (
+    BBOB_PROBLEMS,
+    DIMENSIONS,
+    AttractiveSector,
+    BentCigar,
+    BuecheRastrigin,
+    DifferentPowers,
+    Discus,
+    Ellipsoidal,
+    EllipsoidalRotated,
+    Gallagher21Hi,
+    Gallagher101Me,
+    GriewankRosenbrock,
+    Katsuura,
+    LinearSlope,
+    Lunacek,
+    Rastrigin,
+    RastriginRotated,
+    Rosenbrock,
+    RosenbrockRotated,
+    SchaffersF7,
+    SchaffersF7IllConditioned,
+    Schwefel,
+    SharpRidge,
+    Sphere,
+    StepEllipsoidal,
+    Weierstrass,
     suite,
 )
-from .descriptor_fns import get_random_projection_descriptor
-from .fitness_fns import BBOB_FNS
 from .noise import NoiseModel
-from .types import (
-    BBOBEval,
-    BBOBParams,
-    BBOBState,
-    NoiseParams,
-    QDBBOBEval,
-    QDBBOBParams,
-)
+from .problem import BBOBProblem
+from .qd import Descriptor, QDProblem, RandomProjection
+from .types import BBOBEval, BBOBParams, NoiseParams, QDEval, QDParams
 
 __all__ = [
-    "BBOB",
-    "QDBBOB",
+    # The contract, and the standard suite built on it
+    "BBOBProblem",
+    "BBOB_PROBLEMS",
+    "DIMENSIONS",
     "suite",
-    "BBOBParams",
-    "QDBBOBParams",
-    "BBOBState",
-    "BBOBEval",
-    "QDBBOBEval",
+    # The 24, in canonical f1-f24 order
+    "Sphere",
+    "Ellipsoidal",
+    "Rastrigin",
+    "BuecheRastrigin",
+    "LinearSlope",
+    "AttractiveSector",
+    "StepEllipsoidal",
+    "Rosenbrock",
+    "RosenbrockRotated",
+    "EllipsoidalRotated",
+    "Discus",
+    "BentCigar",
+    "SharpRidge",
+    "DifferentPowers",
+    "RastriginRotated",
+    "Weierstrass",
+    "SchaffersF7",
+    "SchaffersF7IllConditioned",
+    "GriewankRosenbrock",
+    "Schwefel",
+    "Gallagher101Me",
+    "Gallagher21Hi",
+    "Katsuura",
+    "Lunacek",
+    # Quality-Diversity, composed onto a problem
+    "QDProblem",
+    "Descriptor",
+    "RandomProjection",
+    # Noise, and the data types
     "NoiseModel",
+    "BBOBParams",
+    "BBOBEval",
+    "QDParams",
+    "QDEval",
     "NoiseParams",
-    "BBOB_FNS",
-    "get_random_projection_descriptor",
 ]

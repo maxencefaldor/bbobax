@@ -4,8 +4,12 @@ Every numerically matchable function (all 24 except the two Gallagher
 functions, whose peak layouts are instance data that cannot be injected) is
 compared to the vendored ``tests/_official/bbobbenchmarks.py`` on identical
 instances in float64: the official instance's ``xopt``/``fopt`` and rotation
-matrices are injected into bbobax params/state, and values must agree to 1e-9
+matrices are injected into bbobax params, and values must agree to 1e-9
 relative error. float64 is enabled globally in ``conftest.py``.
+
+The comparison calls ``problem._value`` rather than ``problem.evaluate``: it is
+the raw ``(value, penalty)`` pair the official implementation is defined in
+terms of, before noise and ``f_opt``.
 
 Conventions bridged here (see ``_INSTANCE_MAPPINGS``):
 
@@ -30,8 +34,8 @@ import numpy as np
 import pytest
 
 from _official import bbobbenchmarks as bb
-from bbobax.fitness_fns import BBOB_FNS
-from bbobax.types import BBOBParams, BBOBState
+from bbobax.functions import BBOB_PROBLEMS
+from bbobax.types import BBOBParams
 from conftest import zero_noise_params
 
 # Tolerances: values must match to 1e-9 relative against |f - fopt|, with an
@@ -202,20 +206,19 @@ _INSTANCE_MAPPINGS = {
 }
 
 
-def _make_params_state(D, x_opt, f_opt, r, q, key=None):
-    # The function and the dimension are the task's, not the instance's: params
-    # carry neither, and every array is exactly D long.
-    params = BBOBParams(
+def _make_params(x_opt, f_opt, r, q, key=None):
+    # The function and the dimension are the problem's, not the instance's:
+    # params carry neither, and every array is exactly D long.
+    return BBOBParams(
+        key=key if key is not None else jax.random.key(0),
         x_opt=jnp.asarray(x_opt, dtype=jnp.float64),
         f_opt=jnp.array(float(f_opt)),
         r=jnp.asarray(r, dtype=jnp.float64),
         q=jnp.asarray(q, dtype=jnp.float64),
-        key=key if key is not None else jax.random.key(0),
-        # Fitness functions never read noise_params; BBOB.evaluate does, and it
-        # is not on this path. Zeros keep the params well-formed all the same.
+        # `_value` never reads noise_params; `evaluate` does, and it is not on
+        # this path. Zeros keep the params well-formed all the same.
         noise_params=zero_noise_params(),
     )
-    return params, BBOBState(counter=0)
 
 
 def _test_points(rng, D, x_opt):
@@ -247,14 +250,13 @@ def test_alignment_with_official(fid, num_dims, instance):
     off(np.zeros(D))  # trigger dimension-dependent initialization
     r, q = mapper(off, D)
     x_opt = np.asarray(off.xopt, dtype=float)
-    params, state = _make_params_state(D, x_opt, off.fopt, r, q)
+    params = _make_params(x_opt, off.fopt, r, q)
+    problem = BBOB_PROBLEMS[name](num_dims=D)
 
     rng = np.random.default_rng(97 * fid + 10 * D + instance)
     X = _test_points(rng, D, x_opt)
 
-    value, penalty = jax.vmap(BBOB_FNS[name].fitness_fn, in_axes=(0, None, None))(
-        jnp.asarray(X), state, params
-    )
+    value, penalty = jax.vmap(problem._value, in_axes=(0, None))(jnp.asarray(X), params)
     ours = np.asarray(value) + np.asarray(penalty) + float(off.fopt)
     theirs = np.array([float(off(x)) for x in X])
 
@@ -296,7 +298,7 @@ _GALLAGHER = {
 def _gallagher_layout(name, D, instance_key, x_opt):
     """Replicate the layout generation of the bbobax Gallagher functions.
 
-    Mirrors the PRNG call sequence in ``fitness_fns.gallagher_*`` exactly
+    Mirrors the PRNG call sequence in ``functions._Gallagher._value`` exactly
     (fold_in with the function's tag, then permutation / per-peak diagonal
     permutations / peak positions). Returns numpy (w, diagonals, y).
     """
@@ -368,22 +370,21 @@ def test_gallagher_matches_paper_formula(name, num_dims):
     rng = np.random.default_rng(2100 + D)
     R = np.asarray(bb.compute_rotation(70 + D, D))  # any orthogonal matrix
     instance_key = jax.random.key(1234 + D)
-    scale = 0.98 if name == "gallagher_21_hi" else 1.0  # x_opt convention
+    scale = 0.98 if name == "gallagher_21_hi" else 1.0  # x_opt constraint
     x_opt = scale * rng.uniform(-4.0, 4.0, size=D)
-    params, state = _make_params_state(D, x_opt, 0.0, R, np.eye(D), key=instance_key)
+    params = _make_params(x_opt, 0.0, R, np.eye(D), key=instance_key)
+    problem = BBOB_PROBLEMS[name](num_dims=D)
     w, diags, y = _gallagher_layout(name, D, instance_key, x_opt)
 
     X = _test_points(rng, D, x_opt)
-    value, penalty = jax.vmap(BBOB_FNS[name].fitness_fn, in_axes=(0, None, None))(
-        jnp.asarray(X), state, params
-    )
+    value, penalty = jax.vmap(problem._value, in_axes=(0, None))(jnp.asarray(X), params)
     ours = np.asarray(value) + np.asarray(penalty)
     theirs = np.array([_gallagher_reference(x, R, w, diags, y, D) for x in X])
 
     np.testing.assert_allclose(ours, theirs, rtol=1e-12, atol=1e-12)
 
     # (d) f(y_1) == 0: the first peak is the global optimum with value 0.
-    v, p = BBOB_FNS[name].fitness_fn(jnp.asarray(x_opt), state, params)
+    v, p = problem._value(jnp.asarray(x_opt), params)
     assert abs(float(v) + float(p)) <= 1e-9
 
 
@@ -399,12 +400,11 @@ def test_gallagher_layout_follows_key(name):
     R = np.asarray(bb.compute_rotation(80 + D, D))
     x_opt = rng.uniform(-3.9, 3.9, size=D)
     X = jnp.asarray(rng.uniform(-5.0, 5.0, size=(20, D)))
+    problem = BBOB_PROBLEMS[name](num_dims=D)
 
     def values(key):
-        params, state = _make_params_state(D, x_opt, 0.0, R, np.eye(D), key=key)
-        v, p = jax.vmap(BBOB_FNS[name].fitness_fn, in_axes=(0, None, None))(
-            X, state, params
-        )
+        params = _make_params(x_opt, 0.0, R, np.eye(D), key=key)
+        v, p = jax.vmap(problem._value, in_axes=(0, None))(X, params)
         return np.asarray(v) + np.asarray(p)
 
     v1 = values(jax.random.key(1))
@@ -422,14 +422,12 @@ def test_gallagher_101_and_21_differ():
     R = np.asarray(bb.compute_rotation(90 + D, D))
     x_opt = rng.uniform(-3.9, 3.9, size=D)
     X = jnp.asarray(rng.uniform(-5.0, 5.0, size=(20, D)))
-    params, state = _make_params_state(
-        D, x_opt, 0.0, R, np.eye(D), key=jax.random.key(3)
-    )
+    params = _make_params(x_opt, 0.0, R, np.eye(D), key=jax.random.key(3))
 
-    v21, p21 = jax.vmap(
-        BBOB_FNS["gallagher_101_me"].fitness_fn, in_axes=(0, None, None)
-    )(X, state, params)
-    v22, p22 = jax.vmap(
-        BBOB_FNS["gallagher_21_hi"].fitness_fn, in_axes=(0, None, None)
-    )(X, state, params)
+    v21, _ = jax.vmap(
+        BBOB_PROBLEMS["gallagher_101_me"](num_dims=D)._value, in_axes=(0, None)
+    )(X, params)
+    v22, _ = jax.vmap(
+        BBOB_PROBLEMS["gallagher_21_hi"](num_dims=D)._value, in_axes=(0, None)
+    )(X, params)
     assert not np.allclose(np.asarray(v21), np.asarray(v22))
