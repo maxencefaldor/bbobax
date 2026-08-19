@@ -54,6 +54,10 @@ class Descriptor(Protocol):
     The same shape of contract as a problem: `sample` draws the instance data
     the descriptor needs, `evaluate` scores **one** solution and callers `vmap`
     it to cover a batch.
+
+    A protocol rather than a base class, for the reason `BBOBProblem` spells
+    out: descriptors share a contract, not an implementation, and satisfying
+    one should not require importing anything from bbobax.
     """
 
     # Dimensionality of the descriptor space.

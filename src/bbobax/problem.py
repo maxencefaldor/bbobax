@@ -82,6 +82,17 @@ class BBOBProblem:
 
     Subclasses supply `_value`, and override `_sample_x_opt` when their own
     definition constrains where the optimum can be.
+
+    A base class, where `NoiseModel` and `Descriptor` are protocols, because
+    the two cases are genuinely different. Those two share only a contract --
+    `Gaussian.sample` and `Cauchy.sample` have nothing in common -- so there
+    would be nothing for a base class to hold, and a third party should be able
+    to plug one in by shape alone. This one shares almost everything: instance
+    generation, clipping, noise application and the boundary-penalty convention
+    are written once here and a subclass fills in one hole. It also narrows
+    nothing -- `_value` has the same signature in all 24 -- so inheritance
+    stays substitutable, which is exactly what a per-model `apply` could not
+    manage and why the noise models are not a class hierarchy.
     """
 
     # The problem's name, and its key in `BBOB_PROBLEMS`.
