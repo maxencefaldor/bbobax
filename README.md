@@ -51,15 +51,12 @@ Deliberate, documented deviations from COCO (design choices, not accidents):
     family, verified bit-for-bit at the derived point.
 *   **Rotations** are Haar on SO(n) (COCO: O(n)); orientation is the only
     difference, and no benchmark property distinguishes the cosets.
-*   **A sampled dimension range embeds rather than resizes.** `num_dims=10`
-    gives a genuine 10-D problem, identical to COCO's. `num_dims=(2, 10)`
-    samples the dimension per instance, but solutions are always 10 long and
-    the coordinates beyond an instance's own dimension are inert — they move
-    neither fitness nor descriptor. That is a D-dimensional problem *embedded
-    in a 10-dimensional search space*: an optimizer still adapts over all ten
-    coordinates and has to discover which do nothing. It is the right shape
-    for meta-learning across dimensions, and the wrong one for comparing
-    against published BBOB results — fix the dimension for that.
+*   **Nothing about a task is sampled except the instance.** A task is one
+    function at one dimension, as COCO enumerates them; `sample` draws an
+    instance of it. To cover many functions or dimensions, hold many tasks
+    and loop — `bbobax.suite()` builds the standard 24. Under `jit` that loop
+    unrolls, so every task keeps its own compiled code and none pays for
+    dispatch.
 *   The **`additive`** noise model is a bbobax extension with no COCO
     counterpart.
 
@@ -103,7 +100,7 @@ import jax
 from bbobax import BBOB
 
 # Initialize BBOB task with default functions
-bbob = BBOB.create_default(num_dims=(2, 10))
+bbob = BBOB("sphere", num_dims=10)
 
 # Sample a task instance (function ID, dimensions, optimal values, etc.)
 key = jax.random.key(0)
@@ -120,8 +117,8 @@ x = bbob.sample_x(key_x)
 # Returns updated state and evaluation metrics (fitness)
 state, eval_metrics = bbob.evaluate(key_eval, x, state, task_params)
 
-print(f"Function ID: {task_params.fn_id}")
-print(f"Dimensions: {task_params.num_dims}")
+print(f"Function: {bbob.name}")
+print(f"Dimensions: {bbob.num_dims}")
 print(f"Fitness: {eval_metrics.fitness}")
 ```
 
@@ -131,17 +128,14 @@ BBOBax also supports Quality-Diversity optimization tasks where solutions are ev
 
 ```python
 import jax
-from bbobax import QDBBOB, bbob_fns, get_random_projection_descriptor
-
-# Define descriptor functions (e.g., random projection)
-descriptor_fns = [get_random_projection_descriptor()]
+from bbobax import QDBBOB, get_random_projection_descriptor
 
 # Initialize QD-BBOB task
 qd_bbob = QDBBOB(
-    descriptor_fns=descriptor_fns,
-    fitness_fns=bbob_fns,
+    fitness_fn="rastrigin",
+    descriptor_fn=get_random_projection_descriptor(),
     descriptor_size=2,
-    num_dims=10
+    num_dims=10,
 )
 
 # Sample task
@@ -160,6 +154,28 @@ state, eval_metrics = qd_bbob.evaluate(key_eval, x, state, task_params)
 
 print(f"Fitness: {eval_metrics.fitness}")
 print(f"Descriptor: {eval_metrics.descriptor}")
+```
+
+### Covering the suite
+
+A task is one function, so covering many means holding many tasks. The loop
+unrolls under `jit`, which is both faithful to COCO's structure and faster than
+dispatching inside one task.
+
+```python
+import jax
+import bbobax
+
+tasks = bbobax.suite(num_dims=10)  # the 24 standard functions
+
+key = jax.random.key(0)
+for name, task in tasks.items():
+    key, key_sample, key_x, key_eval = jax.random.split(key, 4)
+    params = task.sample(key_sample)
+    state = task.init(params)
+    x = task.sample_x(key_x)
+    _, evaluation = task.evaluate(key_eval, x, state, params)
+    print(f"{name:>28}: {evaluation.fitness:.4g}")
 ```
 
 ## Documentation
