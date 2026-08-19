@@ -1,6 +1,7 @@
 """Tests for BBOBax task management."""
 
 import jax
+import pytest
 
 from bbobax.bbob import BBOB, QDBBOB, BBOBParams, BBOBState, QDBBOBParams
 from bbobax.descriptor_fns import get_random_projection_descriptor
@@ -9,21 +10,26 @@ from bbobax.fitness_fns import bbob_fns
 
 def test_bbob_initialization():
     """Test BBOB class initialization."""
-    # Default
+    # Default: a fixed dimension, as official BBOB enumerates it
     task = BBOB.create_default()
     assert len(task.fitness_fns) == len(bbob_fns)
-    assert task.min_num_dims == 2
-    assert task.max_num_dims == 10
+    assert task.min_num_dims == task.max_num_dims == 10
 
-    # Custom
-    task_custom = BBOB(fitness_fns=[bbob_fns["sphere"]], min_num_dims=5, max_num_dims=5)
+    # An int fixes the dimension; a pair samples it per instance
+    task_custom = BBOB(fitness_fns=[bbob_fns["sphere"]], num_dims=5)
     assert len(task_custom.fitness_fns) == 1
-    assert task_custom.min_num_dims == 5
+    assert task_custom.min_num_dims == task_custom.max_num_dims == 5
+
+    task_range = BBOB(fitness_fns=[bbob_fns["sphere"]], num_dims=(2, 10))
+    assert (task_range.min_num_dims, task_range.max_num_dims) == (2, 10)
+
+    with pytest.raises(ValueError, match="num_dims"):
+        BBOB(fitness_fns=[bbob_fns["sphere"]], num_dims=(10, 2))
 
 
 def test_bbob_workflow():
     """Test complete BBOB workflow: sample -> init -> evaluate."""
-    task = BBOB.create_default(max_num_dims=5)
+    task = BBOB.create_default(num_dims=5)
     key = jax.random.key(0)
 
     # Sample task parameters
@@ -62,7 +68,7 @@ def test_qdbbob_workflow():
         descriptor_fns=[descriptor_fn],
         fitness_fns=[bbob_fns["sphere"]],
         descriptor_size=descriptor_size,
-        max_num_dims=5,
+        num_dims=5,
     )
 
     key = jax.random.key(0)
@@ -85,7 +91,7 @@ def test_qdbbob_workflow():
 
 def test_task_jit_vmap():
     """Test JAX transformations on task evaluation."""
-    task = BBOB.create_default(max_num_dims=5)
+    task = BBOB.create_default(num_dims=5)
     key = jax.random.key(0)
     params = task.sample(key)
     state = task.init(params)

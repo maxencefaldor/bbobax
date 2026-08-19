@@ -14,7 +14,7 @@ def test_bbob_optimization_loop():
     num_generations = 5
 
     # Initialize task
-    task = BBOB.create_default(max_num_dims=max_dims)
+    task = BBOB.create_default(num_dims=max_dims)
     key = jax.random.key(42)
 
     # Sample task instance
@@ -80,7 +80,7 @@ def test_qdbbob_optimization_loop():
     task = QDBBOB.create_default(
         descriptor_fns=[descriptor_fn],
         descriptor_size=descriptor_size,
-        max_num_dims=max_dims,
+        num_dims=max_dims,
     )
     key = jax.random.key(42)
 

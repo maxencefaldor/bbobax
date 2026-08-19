@@ -51,6 +51,15 @@ Deliberate, documented deviations from COCO (design choices, not accidents):
     family, verified bit-for-bit at the derived point.
 *   **Rotations** are Haar on SO(n) (COCO: O(n)); orientation is the only
     difference, and no benchmark property distinguishes the cosets.
+*   **A sampled dimension range embeds rather than resizes.** `num_dims=10`
+    gives a genuine 10-D problem, identical to COCO's. `num_dims=(2, 10)`
+    samples the dimension per instance, but solutions are always 10 long and
+    the coordinates beyond an instance's own dimension are inert — they move
+    neither fitness nor descriptor. That is a D-dimensional problem *embedded
+    in a 10-dimensional search space*: an optimizer still adapts over all ten
+    coordinates and has to discover which do nothing. It is the right shape
+    for meta-learning across dimensions, and the wrong one for comparing
+    against published BBOB results — fix the dimension for that.
 *   The **`additive`** noise model is a bbobax extension with no COCO
     counterpart.
 
@@ -94,15 +103,15 @@ import jax
 from bbobax import BBOB
 
 # Initialize BBOB task with default functions
-bbob = BBOB.create_default(min_num_dims=2, max_num_dims=10)
+bbob = BBOB.create_default(num_dims=(2, 10))
 
 # Sample a task instance (function ID, dimensions, optimal values, etc.)
 key = jax.random.key(0)
 key_task, key_init, key_eval, key_x = jax.random.split(key, 4)
 task_params = bbob.sample(key_task)
 
-# Initialize internal state (e.g., rotation matrices)
-state = bbob.init(key_init, task_params)
+# Initialize the evaluation state (rotations live in the params)
+state = bbob.init(task_params)
 
 # Sample a random solution in the search space
 x = bbob.sample_x(key_x)
@@ -132,8 +141,7 @@ qd_bbob = QDBBOB(
     descriptor_fns=descriptor_fns,
     fitness_fns=bbob_fns,
     descriptor_size=2,
-    min_num_dims=10, 
-    max_num_dims=10
+    num_dims=10
 )
 
 # Sample task
@@ -142,7 +150,7 @@ key_task, key_init, key_eval, key_x = jax.random.split(key, 4)
 task_params = qd_bbob.sample(key_task)
 
 # Initialize state
-state = qd_bbob.init(key_init, task_params)
+state = qd_bbob.init(task_params)
 
 # Sample solution
 x = qd_bbob.sample_x(key_x)

@@ -23,8 +23,7 @@ class BBOB:
     def __init__(
         self,
         fitness_fns: list[FitnessFn] | dict[str, FitnessFn],
-        min_num_dims: int = 2,
-        max_num_dims: int = 10,
+        num_dims: int | tuple[int, int] = 10,
         x_range: tuple[float, float] = (-5.0, 5.0),
         x_opt_range: tuple[float, float] = (-4.0, 4.0),
         f_opt_range: tuple[float, float] = (0.0, 0.0),
@@ -39,8 +38,21 @@ class BBOB:
                 ``bbob_fns`` or a subset), or a bare list. Names drive the
                 per-function x_opt conventions, so ``params.x_opt`` is always
                 the true argmin; a bare list gets no conventions.
-            min_num_dims: Minimum number of dimensions (inclusive).
-            max_num_dims: Maximum number of dimensions (inclusive).
+            num_dims: The problem dimension. An int fixes it, which is what
+                official BBOB does -- dimension is a coordinate of the
+                experiment, enumerated alongside function and instance -- and
+                is the only setting that reproduces a COCO problem exactly.
+                A ``(low, high)`` pair samples it per instance, inclusive at
+                both ends, which enables meta-learning across dimensions at a
+                cost worth understanding: solutions are always
+                ``max(num_dims)`` long, and the coordinates beyond an
+                instance's own dimension are inert -- they change neither
+                fitness nor descriptor. Such an instance is a D-dimensional
+                problem *embedded in a larger search space*, not COCO's
+                D-dimensional problem: an optimizer still adapts over every
+                coordinate and must discover which ones do nothing. Results
+                from a sampled range are therefore not comparable with
+                published BBOB results; fix the dimension for that.
             x_range: Range of input variables.
             x_opt_range: Range of optimal input variables. BBOB draws x_opt in
                 [-4, 4]; per-function conventions then reshape the draw.
@@ -75,8 +87,15 @@ class BBOB:
         else:
             self._x_opt_conventions = [lambda x_opt: x_opt] * len(self.fitness_fns)
 
-        self.min_num_dims = min_num_dims
-        self.max_num_dims = max_num_dims
+        if isinstance(num_dims, int):
+            self.min_num_dims = self.max_num_dims = num_dims
+        else:
+            self.min_num_dims, self.max_num_dims = num_dims
+        if not 1 <= self.min_num_dims <= self.max_num_dims:
+            raise ValueError(
+                f"num_dims must be a positive int or an ordered (low, high) pair; "
+                f"got {num_dims!r}"
+            )
         self.x_range = x_range
         self.x_opt_range = x_opt_range
         self.f_opt_range = f_opt_range
