@@ -1,4 +1,4 @@
-"""The noisy BBOB suite, f101-f130.
+"""The bbob-noisy suite, f101-f130.
 
 Thirty problems built from eight of the noiseless functions under the three
 official noise models, at the paper's two severities. Transcribed from the
@@ -61,7 +61,7 @@ class Noisy(BBOBProblem):
 
     """
 
-    name = "noisy"
+    name = "bbob-noisy"
 
     # Every noisy problem's boundary handling, replacing the base function's
     # own (`defaultboundaryhandling(x, 100.)` on all three noisy mixins).
@@ -77,7 +77,7 @@ class Noisy(BBOBProblem):
         return self.problem._sample_x_opt(key)
 
     def _value(self, x: jax.Array, params: BBOBParams) -> tuple[jax.Array, jax.Array]:
-        # The base's own penalty is discarded, not added to: the noisy suite
+        # The base's own penalty is discarded, not added to: the bbob-noisy suite
         # replaces it with one factor for all thirty.
         value, _ = self.problem._value(x, params)
         return value, self.penalty_factor * f_pen(x)
@@ -144,17 +144,17 @@ _NOISE_MODELS = {
 }
 
 # The suite, keyed as `f101` .. `f130`. Numbers rather than names because that
-# is how the noisy suite is cited: a paper reports f107, not "severely
+# is how the bbob-noisy suite is cited: a paper reports f107, not "severely
 # Gaussian-noised sphere".
-NOISY_PROBLEMS: dict[str, tuple[type[BBOBProblem], str]] = {
+BBOB_NOISY_PROBLEMS: dict[str, tuple[type[BBOBProblem], str]] = {
     f"f{fid}": (problem_class, severity) for fid, problem_class, severity in _SUITE
 }
 
 
-def noisy_suite(
+def bbob_noisy_suite(
     names: list[str] | None = None, num_dims: int = 10, **kwargs
 ) -> dict[str, Noisy]:
-    """Build the noisy BBOB suite, f101-f130.
+    """Build the bbob-noisy suite, f101-f130.
 
     Args:
         names: Which problems to include, as `f101` .. `f130`; defaults to all
@@ -169,17 +169,18 @@ def noisy_suite(
         KeyError: If `names` contains something outside f101-f130.
 
     """
-    names = list(NOISY_PROBLEMS) if names is None else names
+    names = list(BBOB_NOISY_PROBLEMS) if names is None else names
 
-    unknown = [name for name in names if name not in NOISY_PROBLEMS]
+    unknown = [name for name in names if name not in BBOB_NOISY_PROBLEMS]
     if unknown:
         raise KeyError(
-            f"not noisy BBOB problems: {unknown}; available: {sorted(NOISY_PROBLEMS)}"
+            f"not bbob-noisy problems: {unknown}; "
+            f"available: {sorted(BBOB_NOISY_PROBLEMS)}"
         )
 
     suite = {}
     for name in names:
-        problem_class, severity = NOISY_PROBLEMS[name]
+        problem_class, severity = BBOB_NOISY_PROBLEMS[name]
         base = problem_class(num_dims=num_dims, **kwargs)
         suite[name] = Noisy(base, _NOISE_MODELS[severity](), **kwargs)
     return suite

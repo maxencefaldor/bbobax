@@ -3,7 +3,7 @@
 import jax
 import jax.numpy as jnp
 
-from bbobax.bbob import DIMENSIONS, suite
+from bbobax.bbob import DIMENSIONS, bbob_suite
 from bbobax.qd import QDProblem, RandomProjection
 
 
@@ -13,7 +13,7 @@ def test_bbob_optimization_loop():
     population_size = 20
     num_generations = 5
 
-    problem = suite(["rastrigin"], num_dims=num_dims)["rastrigin"]
+    problem = bbob_suite(["rastrigin"], num_dims=num_dims)["rastrigin"]
     key = jax.random.key(42)
 
     # Sample the instance
@@ -50,7 +50,7 @@ def test_suite_optimization_loop():
     """Loop over the suite: each problem is evaluated by its own function."""
     num_dims = 4
     population_size = 8
-    problems = suite(num_dims=num_dims)
+    problems = bbob_suite(num_dims=num_dims)
     key = jax.random.key(0)
 
     best = {}
@@ -89,7 +89,7 @@ def test_meta_learning_loop_over_functions_and_dimensions():
 
     scores = {}
     for num_dims in DIMENSIONS[:2]:
-        for name, problem in suite(num_dims=num_dims).items():
+        for name, problem in bbob_suite(num_dims=num_dims).items():
             key, key_instances, key_x = jax.random.split(key, 3)
 
             # A batch of instances of one (function, dimension).
@@ -117,7 +117,7 @@ def test_qd_optimization_loop():
     descriptor_size = 2
 
     problem = QDProblem(
-        suite(["sphere"], num_dims=num_dims)["sphere"],
+        bbob_suite(["sphere"], num_dims=num_dims)["sphere"],
         RandomProjection(descriptor_size=descriptor_size),
     )
     key = jax.random.key(42)

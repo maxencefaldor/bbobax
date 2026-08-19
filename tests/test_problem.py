@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from bbobax.bbob import BBOB_PROBLEMS, Rastrigin, Sphere, suite
+from bbobax.bbob import BBOB_PROBLEMS, Rastrigin, Sphere, bbob_suite
 from bbobax.noise import Noiseless
 from bbobax.problem import BBOBEval, BBOBParams, BBOBProblem
 
@@ -102,8 +102,8 @@ def test_problem_jit_vmap():
 
 
 def test_suite_builds_the_standard_24():
-    """suite() is the 24 standard functions as 24 separate problems."""
-    problems = suite(num_dims=6)
+    """bbob_suite() is the 24 standard functions as 24 separate problems."""
+    problems = bbob_suite(num_dims=6)
 
     assert list(problems) == list(BBOB_PROBLEMS)
     assert len(problems) == 24
@@ -119,7 +119,7 @@ def test_suite_builds_the_standard_24():
         assert type(problem) is BBOB_PROBLEMS[name]
 
     # A subset is selectable, and kwargs reach every problem.
-    subset = suite(["sphere", "discus"], num_dims=3, clip_x=True)
+    subset = bbob_suite(["sphere", "discus"], num_dims=3, clip_x=True)
     assert list(subset) == ["sphere", "discus"]
     assert all(p.num_dims == 3 and p.clip_x for p in subset.values())
 
@@ -127,12 +127,12 @@ def test_suite_builds_the_standard_24():
 def test_suite_rejects_unknown_names():
     """An unknown function is named in the error, with the available list."""
     with pytest.raises(KeyError, match="not_a_bbob_function"):
-        suite(["sphere", "not_a_bbob_function"])
+        bbob_suite(["sphere", "not_a_bbob_function"])
 
 
 def test_suite_evaluation_has_no_dispatch():
     """Each suite problem evaluates through its own function, at its own optimum."""
-    problems = suite(num_dims=4)
+    problems = bbob_suite(num_dims=4)
     key = jax.random.key(11)
 
     for name, problem in problems.items():

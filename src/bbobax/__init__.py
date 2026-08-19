@@ -27,8 +27,9 @@ from .bbob import (
     Sphere,
     StepEllipsoidal,
     Weierstrass,
-    suite,
+    bbob_suite,
 )
+from .bbob_noisy import BBOB_NOISY_PROBLEMS, Noisy, bbob_noisy_suite
 from .many_affine import ManyAffine
 from .noise import (
     NOISE_MODELS,
@@ -39,17 +40,16 @@ from .noise import (
     NoiseModel,
     Uniform,
 )
-from .noisy import NOISY_PROBLEMS, Noisy, noisy_suite
 from .problem import BBOBEval, BBOBParams, BBOBProblem
 from .qd import Descriptor, QDEval, QDParams, QDProblem, RandomProjection
 from .transforms import f_pen, lambda_alpha, transform_asy, transform_osz
 
 __all__ = [
-    # The contract, and the standard suite built on it
+    # The contract, and the bbob suite built on it
     "BBOBProblem",
     "BBOB_PROBLEMS",
     "DIMENSIONS",
-    "suite",
+    "bbob_suite",
     # The 24, in canonical f1-f24 order
     "Sphere",
     "Ellipsoidal",
@@ -77,8 +77,8 @@ __all__ = [
     "Lunacek",
     # Suites built from the 24, rather than one of them
     "Noisy",
-    "NOISY_PROBLEMS",
-    "noisy_suite",
+    "BBOB_NOISY_PROBLEMS",
+    "bbob_noisy_suite",
     "ManyAffine",
     # Quality-Diversity, composed onto a problem
     "QDProblem",

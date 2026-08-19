@@ -3,7 +3,7 @@
 MA-BBOB (Vermetten, Ye, Back, Doerr) draws a sparse weight vector over the 24
 functions and combines their values in log space, giving a continuous space of
 problems rather than a set of 24. That is what makes it worth having here:
-meta-learning over `suite()` samples 24 atoms, while meta-learning over
+meta-learning over `bbob_suite()` samples 24 atoms, while meta-learning over
 `ManyAffine` samples a space.
 
 Transcribed from the reference implementation, IOHexperimenter's

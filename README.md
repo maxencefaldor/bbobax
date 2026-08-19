@@ -17,7 +17,7 @@ A high-performance reimplementation of the [COCO](https://coco-platform.org/) (C
 *   **Standard BBOB**: Includes standard single-objective BBOB functions (noiseless).
 *   **Noise Support**: Gaussian, uniform and Cauchy noise models, verified against the official formulas.
 *   **Quality-Diversity (QD)**: Any of the 24 functions composes with any descriptor.
-*   **Noisy suite**: `noisy_suite()` builds f101–f130, the official noisy BBOB problems.
+*   **bbob-noisy suite**: `bbob_noisy_suite()` builds f101–f130, the official noisy problems.
 *   **Many-Affine BBOB**: `ManyAffine` combines all 24 under a sparse weight vector, turning the suite into a continuous space of problems.
 *   **Flexible API**: Easy integration with existing JAX-based evolutionary computation libraries (e.g., EvoJAX, evosax).
 
@@ -64,13 +64,13 @@ Deliberate, documented deviations from COCO (design choices, not accidents):
 *   **Nothing about a problem is sampled except the instance.** A problem is
     one function at one dimension, as COCO enumerates them; `sample` draws an
     instance of it. To cover many functions or dimensions, hold many problems
-    and loop — `bbobax.suite()` builds the standard 24 and `bbobax.DIMENSIONS`
+    and loop — `bbobax.bbob_suite()` builds the standard 24 and `bbobax.DIMENSIONS`
     is COCO's own dimension set. Under `jit` that loop unrolls, so every
     problem keeps its own compiled code and none pays for dispatch.
 *   **There is no evaluation state.** All 24 functions are memoryless: the
     value at `x` does not depend on when `x` was asked. A dynamic benchmark
     would be a different contract, not a parameter these 24 carry and ignore.
-*   **The noisy suite (f101–f130) is `noisy_suite()`**, and is not just "the 24
+*   **The bbob-noisy suite (f101–f130) is `bbob_noisy_suite()`**, and is not just "the 24
     plus noise": it replaces every function's boundary handling with a uniform
     factor of 100, pins each problem to one of the paper's two severities, and
     reparameterizes two of the bases (f116–f118 use an ellipsoid of
@@ -207,7 +207,7 @@ than dispatching inside one problem.
 import jax
 import bbobax
 
-problems = bbobax.suite(num_dims=10)  # the 24 standard functions
+problems = bbobax.bbob_suite(num_dims=10)  # the 24 standard functions
 
 key = jax.random.key(0)
 for name, problem in problems.items():
@@ -230,7 +230,7 @@ import jax
 import bbobax
 
 for num_dims in bbobax.DIMENSIONS:  # (2, 3, 5, 10, 20, 40), COCO's own set
-    for name, problem in bbobax.suite(num_dims=num_dims).items():
+    for name, problem in bbobax.bbob_suite(num_dims=num_dims).items():
         keys = jax.random.split(jax.random.key(0), 32)
         params = jax.vmap(problem.sample)(keys)  # 32 instances, batched
         ...

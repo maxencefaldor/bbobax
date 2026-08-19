@@ -22,7 +22,7 @@ Two things to know:
   `Noiseless` has none, as official's noise-free functions do not.
 
 **Severity is continuous here, and that is a deviation.** The paper defines two
-discrete severities per model (moderate/severe) and the noisy suite pins each
+discrete severities per model (moderate/severe) and the bbob-noisy suite pins each
 function to one of them; bbobax samples the settings continuously across that
 span instead, so difficulty varies per instance for free and a fixed model is
 not a fixed difficulty. That is what meta-learning wants and what published

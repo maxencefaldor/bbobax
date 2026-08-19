@@ -1,4 +1,4 @@
-"""Tests for the noisy BBOB suite, f101-f130.
+"""Tests for the bbob-noisy suite, f101-f130.
 
 The suite table is pinned against the vendored `bbobbenchmarks.py`, which is
 where it was read from: each `F1xx` class names its base and its noise
@@ -13,11 +13,11 @@ import numpy as np
 import pytest
 
 from bbobax.bbob import DIMENSIONS, EllipsoidalRotated, GriewankRosenbrock
-from bbobax.noisy import (
-    NOISY_PROBLEMS,
+from bbobax.bbob_noisy import (
+    BBOB_NOISY_PROBLEMS,
     _Ellipsoid1e4,
     _GriewankRosenbrock1,
-    noisy_suite,
+    bbob_noisy_suite,
 )
 from bbobax.problem import BBOBProblem
 from bbobax.transforms import f_pen
@@ -60,16 +60,16 @@ def test_the_suite_is_the_reference_table():
     assert len(official) == 30, "expected f101-f130 in the vendored reference"
 
     for name, (base_name, noise_name) in official.items():
-        problem_class, severity = NOISY_PROBLEMS[name]
+        problem_class, severity = BBOB_NOISY_PROBLEMS[name]
         assert problem_class.name == base_name, name
         assert severity.startswith(noise_name), name
 
-    assert list(NOISY_PROBLEMS) == [f"f{fid}" for fid in range(101, 131)]
+    assert list(BBOB_NOISY_PROBLEMS) == [f"f{fid}" for fid in range(101, 131)]
 
 
 def test_the_severities_are_the_papers_two():
     """f101-f106 are moderate; everything from f107 on is severe."""
-    for name, (_, severity) in NOISY_PROBLEMS.items():
+    for name, (_, severity) in BBOB_NOISY_PROBLEMS.items():
         fid = int(name[1:])
         expected = "moderate" if fid <= 106 else "severe"
         assert severity.endswith(expected), name
@@ -77,7 +77,7 @@ def test_the_severities_are_the_papers_two():
 
 def test_the_reparameterized_bases_differ_from_their_noiseless_twins():
     """Two of the bases are not the noiseless function, and must not be."""
-    suite = noisy_suite(["f116", "f125"], num_dims=5)
+    suite = bbob_noisy_suite(["f116", "f125"], num_dims=5)
 
     # f116-f118 use an ellipsoid of conditioning 1e4, where f10 has 1e6.
     assert type(suite["f116"].problem) is _Ellipsoid1e4
@@ -96,7 +96,7 @@ def test_boundary_handling_is_uniform_and_replaces_the_base():
     The base's own penalty is discarded rather than added to -- including for
     the several noiseless functions that have none at all.
     """
-    suite = noisy_suite(num_dims=4)
+    suite = bbob_noisy_suite(num_dims=4)
     key = jax.random.key(0)
     outside = jnp.array([7.0, -7.0, 0.0, 6.0])
 
@@ -117,7 +117,7 @@ def test_boundary_handling_is_uniform_and_replaces_the_base():
 
 def test_it_is_a_problem_like_any_other():
     """`Noisy` satisfies the same contract, so nothing downstream cares."""
-    problem = noisy_suite(["f107"], num_dims=5)["f107"]
+    problem = bbob_noisy_suite(["f107"], num_dims=5)["f107"]
     assert isinstance(problem, BBOBProblem)
 
     params = problem.sample(jax.random.key(0))
@@ -133,7 +133,7 @@ def test_the_optimum_stays_reachable_under_every_model():
     never stop an algorithm reaching the target precision, so `f(x_opt)` is the
     undisturbed value however many times it is asked.
     """
-    suite = noisy_suite(num_dims=4)
+    suite = bbob_noisy_suite(num_dims=4)
     key = jax.random.key(0)
 
     for name, problem in suite.items():
@@ -154,7 +154,7 @@ def test_noise_is_live_away_from_the_optimum():
     indicator firing makes it vary. At f103's moderate `p = 0.05`, eight draws
     miss an outlier two times in three; 256 miss it with probability 2e-6.
     """
-    suite = noisy_suite(num_dims=4)
+    suite = bbob_noisy_suite(num_dims=4)
     key = jax.random.key(0)
 
     for name, problem in suite.items():
@@ -173,7 +173,7 @@ def test_moderate_is_milder_than_severe():
     f101/f107 are the same sphere under the same Gaussian model at the paper's
     two settings, so the severe one must scatter more.
     """
-    suite = noisy_suite(["f101", "f107"], num_dims=5)
+    suite = bbob_noisy_suite(["f101", "f107"], num_dims=5)
     key = jax.random.key(0)
 
     spread = {}
@@ -194,7 +194,7 @@ def test_moderate_is_milder_than_severe():
 @pytest.mark.parametrize("num_dims", DIMENSIONS)
 def test_nothing_is_non_finite_at_any_dimension(num_dims):
     """All thirty stay finite across the box and outside it, at every D."""
-    suite = noisy_suite(num_dims=num_dims)
+    suite = bbob_noisy_suite(num_dims=num_dims)
     rng = np.random.default_rng(num_dims)
     xs = jnp.asarray(
         np.vstack(
@@ -219,7 +219,7 @@ def test_the_severities_are_pinned_not_sampled():
     configured: pinning a range is only useful if the draw lands on the point.
     """
     names = ["f101", "f107", "f102", "f108", "f103", "f109"]
-    suite = noisy_suite(names, num_dims=5)
+    suite = bbob_noisy_suite(names, num_dims=5)
 
     drawn = {
         name: suite[name].sample(jax.random.key(seed)).noise_model
@@ -244,4 +244,4 @@ def test_the_severities_are_pinned_not_sampled():
 def test_suite_rejects_unknown_names():
     """Only f101-f130 exist."""
     with pytest.raises(KeyError, match="f999"):
-        noisy_suite(["f101", "f999"])
+        bbob_noisy_suite(["f101", "f999"])
