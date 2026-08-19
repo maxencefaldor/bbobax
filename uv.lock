@@ -88,6 +88,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "nbclient" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -119,6 +120,7 @@ requires-dist = [
     { name = "mkdocs-jupyter", marker = "extra == 'docs'" },
     { name = "mkdocs-material", marker = "extra == 'docs'" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'" },
+    { name = "nbclient", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },

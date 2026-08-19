@@ -586,10 +586,9 @@ if __name__ == "__main__":
 
     # Setup Task
     bbob = QDBBOB(
-        min_num_dims=dim,
-        max_num_dims=dim,
-        fitness_fns=[bbob_fns["sphere"]],
-        descriptor_fns=[get_random_projection_descriptor()],
+        num_dims=dim,
+        fitness_fn="sphere",
+        descriptor_fn=get_random_projection_descriptor(),
         descriptor_size=2,
     )
 
@@ -597,7 +596,7 @@ if __name__ == "__main__":
     key_bbob, key_init, key_qd, key_pop = jax.random.split(key, 4)
 
     bbob_params = bbob.sample(key_bbob)
-    bbob_state = bbob.init(key_init, bbob_params)
+    bbob_state = bbob.init(bbob_params)
 
     # Solution template
     solution_template = jnp.zeros((dim,))

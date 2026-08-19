@@ -32,6 +32,7 @@ dev = [
 	"pytest-cov",
 	"ruff",
 	"ty",
+	"nbclient",  # executes the notebooks in CI
 ]
 docs = [
 	"mkdocs",
