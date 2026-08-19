@@ -1,4 +1,3 @@
 # Noise Models
 
 ::: bbobax.noise
-
