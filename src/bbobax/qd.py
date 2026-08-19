@@ -46,6 +46,14 @@ transformations the functions themselves are built from.
 Reading anything from `params` beyond shapes couples a descriptor to the
 landscape; every family above except `AlignedProjection` deliberately does
 not.
+
+One corner of the space has **exact ground truth**: for `Sphere` under any
+*linear* descriptor, the best fitness achievable at a descriptor value is a
+closed-form projection -- `sphere_descriptor_optimum`. That is something no
+other QD benchmark provides: the per-cell optimum is exactly what QD-score
+normalization has always lacked (evaluate it at cell centers and the archive
+has an absolute reference), and it exists here because the fidelity work made
+`x_opt` the true argmin.
 """
 
 from typing import Any, Protocol, runtime_checkable
@@ -492,6 +500,49 @@ class AlignedProjection(RandomProjection):
             : self.descriptor_size
         ]
         return self._normalize(mixed, problem)
+
+
+def sphere_descriptor_optimum(
+    d: jax.Array, matrix: jax.Array, params: BBOBParams
+) -> tuple[jax.Array, jax.Array]:
+    """Compute the exact best fitness at `d`, for Sphere under a linear map.
+
+    Ground truth in closed form: over `{x : matrix @ x = d}`, the sphere
+    `|x - x_opt|^2 + f_opt` is minimized by the minimum-norm correction
+    `x = x_opt + pinv(matrix) @ (d - matrix @ x_opt)`. Evaluated at a grid's
+    cell centers, this is the absolute per-cell reference QD benchmarking has
+    lacked -- targets per cell, not only per problem.
+
+    Valid exactly for `Sphere` composed with a descriptor whose map is linear:
+    `RandomProjection` and `AlignedProjection` (`matrix` is
+    `params.descriptor`), and `SubsetProjection` after scattering its matrix
+    to full width::
+
+        full = jnp.zeros((k, num_dims)).at[:, sub.subset].set(sub.matrix)
+
+    The nonlinear families have no closed form, and the quantized family's
+    preimages are slabs rather than points; both are out of scope by
+    construction, not omission.
+
+    The minimum is taken over all of `R^D`, so the value is a lower bound for
+    the box-constrained optimum and exact whenever the returned argmin lies
+    inside the box -- which the caller can check, and which holds for every
+    cell whose preimage meets the box interior.
+
+    Args:
+        d: A descriptor value, shape `(descriptor_size,)`.
+        matrix: The descriptor's effective linear map, shape
+            `(descriptor_size, num_dims)`.
+        params: The sphere's instance.
+
+    Returns:
+        The optimal fitness at `d` (with `f_opt` added, comparable to
+        `evaluate`), and its argmin, shape `(num_dims,)`.
+
+    """
+    correction = jnp.linalg.pinv(matrix) @ (d - matrix @ params.x_opt)
+    fitness = jnp.sum(jnp.square(correction)) + params.f_opt
+    return fitness, params.x_opt + correction
 
 
 class QDProblem:

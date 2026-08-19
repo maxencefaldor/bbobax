@@ -24,6 +24,7 @@ from bbobax.qd import (
     QuantizedProjection,
     RandomProjection,
     SubsetProjection,
+    sphere_descriptor_optimum,
 )
 
 FAMILIES = [
@@ -340,18 +341,115 @@ def test_qd_fitness_is_the_underlying_fitness():
 
 @pytest.mark.parametrize("family", FAMILIES)
 def test_any_function_pairs_with_any_family(family):
-    """Composition is why this is not 24 subclasses: all 24 pair the same way."""
-    num_dims, descriptor_size = 4, 2
+    """Composition is why this is not 24 subclasses: all 24 pair the same way.
+
+    And the `[-1, 1]^k` promise is checked here for *every* function, not only
+    the one the focused bounds tests use: the bound depends only on the box
+    and the descriptor, so it must hold whatever landscape sits underneath --
+    including the six functions that constrain their optimum, and the
+    rotation-coupled family on every instance's own rotation.
+    """
+    num_dims, descriptor_size, batch = 4, 2, 32
     descriptor = family(descriptor_size=descriptor_size)
     key = jax.random.key(3)
 
     for name, problem_class in BBOB_PROBLEMS.items():
         problem = QDProblem(problem_class(num_dims=num_dims), descriptor)
         params = problem.sample(key)
-        evaluation = problem.evaluate(key, problem.sample_x(key), params)
 
-        assert evaluation.descriptor.shape == (descriptor_size,), name
-        assert not jnp.isnan(evaluation.fitness), name
+        keys = jax.random.split(key, batch)
+        xs = jax.vmap(problem.sample_x)(keys)
+        evaluation = jax.vmap(problem.evaluate, in_axes=(0, 0, None))(keys, xs, params)
+
+        assert evaluation.descriptor.shape == (batch, descriptor_size), name
+        assert not jnp.any(jnp.isnan(evaluation.fitness)), name
+        assert jnp.all(jnp.abs(evaluation.descriptor) <= 1.0 + 1e-6), name
+
+
+# --- Exact ground truth, where it exists --------------------------------------
+
+
+def test_sphere_descriptor_optimum_is_feasible_and_matches_evaluate():
+    """The argmin achieves `d` exactly, and its fitness is what evaluate says."""
+    problem = QDProblem(Sphere(num_dims=8), RandomProjection(descriptor_size=2))
+    params = problem.sample(jax.random.key(0))
+    d = jnp.array([0.3, -0.5])
+
+    fitness, x = sphere_descriptor_optimum(d, params.descriptor, params.problem)
+
+    np.testing.assert_allclose(
+        np.asarray(params.descriptor @ x), np.asarray(d), atol=1e-6
+    )
+    evaluation = problem.evaluate(jax.random.key(1), x, params)
+    assert float(evaluation.fitness) == pytest.approx(float(fitness), rel=1e-5)
+
+
+def test_sphere_descriptor_optimum_is_the_optimum():
+    """No solution achieving `d` beats it: the claim, attacked directly.
+
+    Every `x` with `matrix @ x = d` is the argmin plus a null-space
+    perturbation, so the whole feasible set is enumerable up to sampling --
+    and everything in it must be at least as bad.
+    """
+    num_dims = 8
+    problem = QDProblem(Sphere(num_dims=num_dims), RandomProjection(descriptor_size=2))
+    params = problem.sample(jax.random.key(0))
+    matrix = params.descriptor
+    d = jnp.array([-0.2, 0.4])
+
+    fitness, x = sphere_descriptor_optimum(d, matrix, params.problem)
+
+    # Feasible perturbations: project random directions onto the null space.
+    null = jnp.eye(num_dims) - jnp.linalg.pinv(matrix) @ matrix
+    perturbations = jax.random.normal(jax.random.key(1), shape=(64, num_dims)) @ null.T
+    rivals = x[None, :] + perturbations
+    rival_fitness = jax.vmap(
+        lambda r: problem.evaluate(jax.random.key(2), r, params).fitness
+    )(rivals)
+
+    np.testing.assert_allclose(
+        np.asarray(matrix @ rivals.T).T, np.tile(np.asarray(d), (64, 1)), atol=1e-5
+    )
+    assert jnp.all(rival_fitness >= fitness - 1e-6)
+
+
+def test_sphere_descriptor_optimum_supports_subset_by_scattering():
+    """The documented scatter makes SubsetProjection's map a full-width matrix."""
+    num_dims = 6
+    problem = QDProblem(
+        Sphere(num_dims=num_dims), SubsetProjection(descriptor_size=2, subset_size=3)
+    )
+    params = problem.sample(jax.random.key(0))
+    sub = params.descriptor
+
+    full = jnp.zeros((2, num_dims)).at[:, sub.subset].set(sub.matrix)
+    d = jnp.array([0.1, 0.2])
+    fitness, x = sphere_descriptor_optimum(d, full, params.problem)
+
+    evaluation = problem.evaluate(jax.random.key(1), x, params)
+    np.testing.assert_allclose(
+        np.asarray(evaluation.descriptor), np.asarray(d), atol=1e-6
+    )
+    assert float(evaluation.fitness) == pytest.approx(float(fitness), rel=1e-5)
+    # Coordinates the descriptor never reads stay at the optimum: no correction.
+    outside = np.setdiff1d(np.arange(num_dims), np.asarray(sub.subset))
+    np.testing.assert_allclose(
+        np.asarray(x)[outside], np.asarray(params.problem.x_opt)[outside], rtol=1e-6
+    )
+
+
+def test_sphere_descriptor_optimum_at_the_optimums_own_descriptor():
+    """At `d = matrix @ x_opt` the optimum is `x_opt` itself, worth `f_opt`."""
+    problem = QDProblem(Sphere(num_dims=5), RandomProjection(descriptor_size=2))
+    params = problem.sample(jax.random.key(0))
+
+    d = params.descriptor @ params.problem.x_opt
+    fitness, x = sphere_descriptor_optimum(d, params.descriptor, params.problem)
+
+    np.testing.assert_allclose(
+        np.asarray(x), np.asarray(params.problem.x_opt), atol=1e-6
+    )
+    assert float(fitness) == pytest.approx(float(params.problem.f_opt), abs=1e-9)
 
 
 def test_qd_problem_jit_vmap():

@@ -55,6 +55,8 @@ problem = QDProblem(Rastrigin(num_dims=10), RandomProjection(descriptor_size=2))
 evaluation = problem.evaluate(key, x, params)  # .fitness and .descriptor
 ```
 
+For `Sphere` under a linear descriptor, the best fitness achievable at any descriptor value has a closed form — `sphere_descriptor_optimum` — giving QD archives an exact per-cell reference no other benchmark provides.
+
 To cover many functions or dimensions, hold many problems and loop — the loop unrolls under `jit`, so every problem keeps its own compiled code and none pays for dispatch:
 
 ```python

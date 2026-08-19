@@ -52,6 +52,7 @@ from .qd import (
     QuantizedProjection,
     RandomProjection,
     SubsetProjection,
+    sphere_descriptor_optimum,
 )
 from .transforms import f_pen, lambda_alpha, transform_asy, transform_osz
 
@@ -101,6 +102,8 @@ __all__ = [
     "FourierProjection",
     "SubsetProjection",
     "AlignedProjection",
+    # Exact per-descriptor ground truth, where it exists in closed form
+    "sphere_descriptor_optimum",
     # The transformations functions are built from, for building your own
     "lambda_alpha",
     "transform_osz",
