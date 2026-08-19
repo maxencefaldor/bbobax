@@ -1,93 +1,94 @@
-# BBOBax
-
 <div align="center">
-  <p>Accelerated Black-Box Optimization Benchmark in JAX.</p>
+  <h1>BBOBax</h1>
+  <p>Black-Box Optimization Benchmarking in JAX.</p>
   <a href="https://pypi.python.org/pypi/bbobax"><img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/bbobax.svg?style=flat"></img></a>
   <a href="https://pypi.python.org/pypi/bbobax"><img alt="PyPI - Version" src="https://img.shields.io/pypi/v/bbobax.svg?style=flat"></img></a>
+  <a href="https://github.com/maxencefaldor/bbobax/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/bbobax.svg?style=flat"></img></a>
   <a href="https://github.com/google/jax"><img alt="JAX" src="https://img.shields.io/badge/JAX-Accelerated-9cf"></img></a>
 </div>
-</br>
+<br>
 
-A high-performance reimplementation of the [COCO](https://coco-platform.org/) (COmparing Continuous Optimizers) test suite in JAX. BBOBax allows for massive parallelization of function evaluations on hardware accelerators (GPUs/TPUs), enabling efficient benchmarking of black-box optimization algorithms.
+BBOBax is a JAX implementation of [COCO](https://coco-platform.org/)'s BBOB benchmark: the 24 standard noiseless functions, the noisy suite f101–f130, and Many-Affine BBOB. Every function is jit-compilable and vmap-friendly, so populations, instances, and whole experiments run as single compiled programs on CPU, GPU, or TPU — and every value is verified numerically against the official implementation.
 
-## Features
+## Why BBOBax?
 
-*   **JAX-based**: Fully differentiable (where applicable) and JIT-compilable.
-*   **Hardware Acceleration**: Run benchmarks on GPUs and TPUs for massive speedups.
-*   **Standard BBOB**: Includes standard single-objective BBOB functions (noiseless).
-*   **Noise Support**: Gaussian, uniform and Cauchy noise models, verified against the official formulas.
-*   **Quality-Diversity (QD)**: Any of the 24 functions composes with any descriptor.
-*   **bbob-noisy suite**: `bbob_noisy_suite()` builds f101–f130, the official noisy problems.
-*   **Many-Affine BBOB**: `ManyAffine` combines all 24 under a sparse weight vector, turning the suite into a continuous space of problems.
-*   **Flexible API**: Easy integration with existing JAX-based evolutionary computation libraries (e.g., EvoJAX, evosax).
+- **Faithful** 🎯 — verified against the official 2009 BBOB implementation on identical instances, to ≤ 1e-9 relative in float64, re-proven on every test run. Where the papers and the official code disagree, the code wins, with a comment at the site.
+- **Fast** ⚡ — one `vmap` evaluates a population, another batches instances, and `jit` compiles the whole optimization loop. Nothing is stateful, so nothing blocks vectorization.
+- **Simple** 🌱 — one contract: a problem is one function at one dimension, `sample(key)` draws an instance, `evaluate(key, x, params)` scores a solution. A suite is a plain `dict`.
+- **Composable** 🧩 — noise models are held by problems, any function pairs with any descriptor for Quality-Diversity, and Many-Affine blends all 24 into a continuous space of problems.
 
-## Fidelity to official BBOB
+## Suites
 
-Every function and noise model is verified **numerically** against the official
-2009 BBOB implementation (`bbobbenchmarks.py`, vendored as test ground truth):
-identical instances are injected and outputs must agree to ≤1e-9 relative in
-float64 — the suite in `tests/test_alignment.py` re-proves this on every run.
-Where the paper (Hansen, Finck, Ros & Auger, INRIA RR-6829/RR-6869) and the
-official code disagree, the code wins, with a comment at the site.
+| Suite | Problems | Reference |
+| --- | --- | --- |
+| `bbob_suite()` | f1–f24, the standard noiseless functions | [Hansen et al., 2009](https://github.com/maxencefaldor/bbobax/raw/main/docs/assets/bbob-noiseless.pdf) |
+| `bbob_noisy_suite()` | f101–f130, eight functions under the three official noise models | [Hansen et al., 2009](https://github.com/maxencefaldor/bbobax/raw/main/docs/assets/bbob-noisy.pdf) |
+| `ManyAffine` | a continuous space of problems blended from the 24 | [Vermetten et al., 2023](https://arxiv.org/abs/2312.11083) |
 
-Guarantees you can rely on:
+A suite is a `dict[str, BBOBProblem]` — composing your own is a dict comprehension.
 
-*   `params.x_opt` is always the function's **true argmin**, so
-    `f(params.x_opt) = f_opt` for all 24. Six functions constrain where their
-    optimum may sit — a linear function is minimized on a corner, not inside
-    the box — and each draws its own optimum by overriding `_sample_x_opt`,
-    exactly as COCO stores the optimum its construction ends up at.
-*   Noise applies to the raw function value only; the boundary penalty and
-    `f_opt` are added outside it, as the paper prescribes.
-*   Noise is opt-in (`Sphere(noise_model=Gaussian())`); the default is the plain
-    **noiseless** suite with rotations on, exactly COCO's noiseless BBOB. A
-    model is *held*, not switched on, so nothing evaluates a model the problem
-    does not use — severity still varies continuously per instance, and
-    `Mixture(...)` is the explicit opt-in when a batch must mix families.
-*   The three official noise models **stabilize themselves**, as `fGauss`,
-    `fUniform` and `fCauchy` do: below the 1e-8 target precision the
-    undisturbed value comes back, so noise can never stop an algorithm
-    reaching the target. It is part of the model, not a setting.
+## Getting Started
 
-Deliberate, documented deviations from COCO (design choices, not accidents):
+```python
+import jax
+from bbobax import Rastrigin
 
-*   **Instance distribution**: x_opt is drawn continuously in `x_opt_range`
-    (COCO uses a 0.0008 grid) and `f_opt` defaults to 0 (COCO draws a 2-decimal
-    Cauchy clipped to ±1000); there is no seed table, so official numbered
-    instances are not reproducible — instances are sampled, not enumerated.
-*   **f9/f19**: the optimum is placeable via `x_opt` (official derives it from
-    the rotation, always near the origin). Every bbobax instance is an exact
-    translation of an official landscape — a strict superset of the official
-    family, verified bit-for-bit at the derived point.
-*   **Rotations** are Haar on SO(n) (COCO: O(n)); orientation is the only
-    difference, and no benchmark property distinguishes the cosets.
-*   **Nothing about a problem is sampled except the instance.** A problem is
-    one function at one dimension, as COCO enumerates them; `sample` draws an
-    instance of it. To cover many functions or dimensions, hold many problems
-    and loop — `bbobax.bbob_suite()` builds the standard 24 and `bbobax.DIMENSIONS`
-    is COCO's own dimension set. Under `jit` that loop unrolls, so every
-    problem keeps its own compiled code and none pays for dispatch.
-*   **There is no evaluation state.** All 24 functions are memoryless: the
-    value at `x` does not depend on when `x` was asked. A dynamic benchmark
-    would be a different contract, not a parameter these 24 carry and ignore.
-*   **The bbob-noisy suite (f101–f130) is `bbob_noisy_suite()`**, and is not just "the 24
-    plus noise": it replaces every function's boundary handling with a uniform
-    factor of 100, pins each problem to one of the paper's two severities, and
-    reparameterizes two of the bases (f116–f118 use an ellipsoid of
-    conditioning 1e4 where f10 has 1e6; f125–f127 scale Griewank-Rosenbrock by
-    1 where f19 uses 10).
+problem = Rastrigin(num_dims=10)  # one function at one dimension
 
-## Which floating-point precision?
+key_instance, key_x, key_eval = jax.random.split(jax.random.key(0), 3)
+params = problem.sample(key_instance)  # draw an instance: optimum, rotations, noise
 
-JAX defaults to **float32**, and so does bbobax. That is the right default for
-almost everything, but not for everything — the rule is short:
+# Evaluate a whole population in one compiled call
+population = jax.vmap(problem.sample_x)(jax.random.split(key_x, 1024))
+keys = jax.random.split(key_eval, 1024)
+fitness = jax.vmap(problem.evaluate, in_axes=(0, 0, None))(
+    keys, population, params
+).fitness  # (1024,)
+```
 
-| You are… | Use | Why |
-|---|---|---|
-| comparing algorithms on a fixed budget | **float32** (default) | the landscape is faithful; relative comparisons are unaffected, and it is much faster on GPU/TPU |
-| meta-learning over the suite | **float32** (default) | same, and the batch sizes are where the time goes |
-| measuring how close you got to the optimum | **float64** | see below |
-| reproducing official BBOB values, or checking bbobax against them | **float64** | the alignment suite is defined at 1e-9 relative |
+Quality-Diversity is composition — any function, any descriptor:
+
+```python
+from bbobax import QDProblem, RandomProjection, Rastrigin
+
+problem = QDProblem(Rastrigin(num_dims=10), RandomProjection(descriptor_size=2))
+evaluation = problem.evaluate(key, x, params)  # .fitness and .descriptor
+```
+
+To cover many functions or dimensions, hold many problems and loop — the loop unrolls under `jit`, so every problem keeps its own compiled code and none pays for dispatch:
+
+```python
+import bbobax
+
+for num_dims in bbobax.DIMENSIONS:  # (2, 3, 5, 10, 20, 40), COCO's own set
+    for name, problem in bbobax.bbob_suite(num_dims=num_dims).items():
+        ...
+```
+
+## Tutorials
+
+| Notebook | Colab |
+| --- | --- |
+| Getting Started — the contract on one function | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/maxencefaldor/bbobax/blob/main/notebooks/00_getting_started.ipynb) |
+| The Suites — bbob, bbob-noisy, and Many-Affine | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/maxencefaldor/bbobax/blob/main/notebooks/01_suites.ipynb) |
+| Black-Box Optimization — one problem, one evolution strategy | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/maxencefaldor/bbobax/blob/main/notebooks/02_bbo.ipynb) |
+| Benchmarking — six algorithms across the suite, the COCO way | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/maxencefaldor/bbobax/blob/main/notebooks/03_benchmarking.ipynb) |
+| Meta-Black-Box Optimization — meta-learning a component over the suite | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/maxencefaldor/bbobax/blob/main/notebooks/04_meta_bbo.ipynb) |
+| Quality-Diversity — five algorithms on one skeleton | [![Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/maxencefaldor/bbobax/blob/main/notebooks/05_qd.ipynb) |
+
+## Fidelity
+
+The official 2009 implementation (`bbobbenchmarks.py`) is vendored as test ground truth, and `tests/test_alignment.py` re-proves the numerical agreement on every run. Guarantees you can rely on:
+
+- `params.x_opt` is always the function's true argmin: `f(x_opt) = f_opt` for all 24. The six functions that constrain where their optimum may sit draw it accordingly.
+- Noise applies to the raw function value only; the boundary penalty and `f_opt` are added outside it, and the three official noise models stabilize themselves — below the 1e-8 target precision the undisturbed value comes back, so noise can never hide a solved problem.
+- The bbob-noisy suite is not "the 24 plus noise": boundary handling is replaced with a uniform factor of 100, each problem is pinned to one of the paper's two severities, and two of the bases are reparameterized — exactly as in the reference.
+
+Deliberate, documented deviations: instances are *sampled* from a key rather than enumerated from COCO's seed table, `f_opt` defaults to 0, and rotations are Haar on SO(n). Each deviation is documented where it lives, with the official behavior quoted.
+
+## Precision
+
+BBOBax follows JAX's float32 default, which is right for comparing algorithms and for meta-learning. Measuring proximity to the optimum at BBOB's 1e-8 target precision is a float64 question — float32 carries about 7 decimal digits, so on a landscape of order 1 the target sits below what the format can represent:
 
 ```python
 import jax
@@ -95,182 +96,41 @@ import jax
 jax.config.update("jax_enable_x64", True)  # before any array is created
 ```
 
-The dividing line is BBOB's **target precision of 1e-8**. float32 carries about
-7 decimal digits (`eps = 1.2e-7`), so on a landscape whose values are O(1) or
-larger, 1e-8 is below what the format can represent *relative to the value* —
-"did it reach 1e-8 of the optimum?" is not a question float32 can answer. Two
-consequences worth knowing:
-
-*   The noise models' `1.01e-8` stabilization offset is numerically invisible
-    in float32 for any value above ~0.08. Harmless — the offset only matters
-    near the target — but it is another reason target-precision work wants
-    float64.
-*   `katsuura` sums 32 terms whose last few are below float32's mantissa
-    resolution. They contribute near-zero noise rather than error, so the
-    function is fine in float32; it is only *exact* in float64.
-
-Everything is checked in both: the test suite runs in float64, and a separate
-sweep runs all 24 functions across all six standard dimensions in float32 to
-prove nothing overflows or goes non-finite at the default precision.
+The test suite runs in float64; a separate sweep proves all 24 functions stay finite in float32 across all six standard dimensions.
 
 ## Installation
 
-We recommend using [uv](https://github.com/astral-sh/uv) for a fast and reliable installation, but standard `pip` is also supported.
-
-### Using uv (Recommended)
-
-```bash
-# Clone the repository
-git clone https://github.com/maxencefaldor/bbobax.git
-cd bbobax
-
-# Create a virtual environment
-uv venv
-source .venv/bin/activate
-
-# Install dependencies and the package in editable mode
-uv pip install -e .
-```
-
-### Using pip
+BBOBax requires Python 3.11 or later, and a working [JAX](https://docs.jax.dev/en/latest/installation.html) installation.
 
 ```bash
 pip install bbobax
-# Or install from source
-pip install -e .
 ```
 
-**Note on JAX**: You may need to install the specific version of JAX compatible with your CUDA/cuDNN version. Please refer to the [JAX installation guide](https://github.com/google/jax#installation) for details.
-
-## Usage
-
-### Basic BBOB Example
-
-Each of the 24 functions is a class. Instantiating one fixes the function and
-the dimension; `sample` draws an instance of it.
-
-```python
-import jax
-from bbobax import Sphere
-
-# One function at one dimension -- that is the whole problem
-problem = Sphere(num_dims=10)
-
-key_sample, key_x, key_eval = jax.random.split(jax.random.key(0), 3)
-
-# Draw an instance: its optimum, rotations, and noise settings
-params = problem.sample(key_sample)
-
-# Sample a random solution in the search space
-x = problem.sample_x(key_x)
-
-# Evaluate it
-evaluation = problem.evaluate(key_eval, x, params)
-
-print(f"Function: {problem.name}")
-print(f"Dimensions: {problem.num_dims}")
-print(f"Fitness: {evaluation.fitness}")
-```
-
-### Quality-Diversity (QD) Example
-
-BBOBax also supports Quality-Diversity, where solutions are scored on both
-fitness and a behaviour descriptor. A descriptor is orthogonal to a function —
-any of the 24 pairs with any descriptor — so a QD problem is **composed**:
-
-```python
-import jax
-from bbobax import QDProblem, RandomProjection, Rastrigin
-
-problem = QDProblem(
-    Rastrigin(num_dims=10),
-    RandomProjection(descriptor_size=2),
-)
-
-key_sample, key_x, key_eval = jax.random.split(jax.random.key(42), 3)
-
-params = problem.sample(key_sample)
-x = problem.sample_x(key_x)
-evaluation = problem.evaluate(key_eval, x, params)
-
-print(f"Fitness: {evaluation.fitness}")
-print(f"Descriptor: {evaluation.descriptor}")
-```
-
-### Covering the suite
-
-A problem is one function, so covering many means holding many problems. The
-loop unrolls under `jit`, which is both faithful to COCO's structure and faster
-than dispatching inside one problem.
-
-```python
-import jax
-import bbobax
-
-problems = bbobax.bbob_suite(num_dims=10)  # the 24 standard functions
-
-key = jax.random.key(0)
-for name, problem in problems.items():
-    key, key_sample, key_x, key_eval = jax.random.split(key, 4)
-    params = problem.sample(key_sample)
-    x = problem.sample_x(key_x)
-    evaluation = problem.evaluate(key_eval, x, params)
-    print(f"{name:>28}: {evaluation.fitness:.4g}")
-```
-
-### Meta-learning across functions and dimensions
-
-Array shapes are static in JAX, so a batch cannot mix dimensions. The dimension
-is therefore a Python loop variable and the batch axis is instances *within* a
-dimension — which covers every dimension on every meta-step instead of sampling
-one, and needs only the six compilations `bbobax.DIMENSIONS` names.
-
-```python
-import jax
-import bbobax
-
-for num_dims in bbobax.DIMENSIONS:  # (2, 3, 5, 10, 20, 40), COCO's own set
-    for name, problem in bbobax.bbob_suite(num_dims=num_dims).items():
-        keys = jax.random.split(jax.random.key(0), 32)
-        params = jax.vmap(problem.sample)(keys)  # 32 instances, batched
-        ...
-```
-
-This requires the meta-learned parameters to be dimension-independent, which is
-a property of the algorithm rather than of the benchmark.
-
-## Documentation
-
-Full documentation is available at [https://maxencefaldor.github.io/bbobax/](https://maxencefaldor.github.io/bbobax/).
-
-To build the documentation locally:
+or with [uv](https://github.com/astral-sh/uv):
 
 ```bash
-# Install documentation dependencies
-uv pip install -e ".[docs]"
-
-# Serve the documentation
-mkdocs serve
+uv add bbobax
 ```
 
 ## Citation
 
-If you use BBOBax in your research, please cite it using the following metadata:
+If you use BBOBax in your research, please cite:
 
-```yaml
-title: "BBOBax"
-abstract: "BBOBax: Accelerated Black-Box Optimization Benchmark in JAX."
-authors:
-  - family-names: "Faldor"
-    given-names: "Maxence"
-    orcid: "https://orcid.org/0000-0003-4743-9494"
-repository-code: "https://github.com/maxencefaldor/bbobax"
-type: software
+```bibtex
+@software{faldor2025bbobax,
+  author = {Faldor, Maxence},
+  title = {{BBOBax}: Black-Box Optimization Benchmarking in {JAX}},
+  url = {https://github.com/maxencefaldor/bbobax},
+  year = {2025},
+}
 ```
 
 ## References
 
-This library is built upon the standard BBOB function definitions. Please verify the details in the provided documentation:
+- Hansen, N., Finck, S., Ros, R., & Auger, A. (2009). *Real-parameter black-box optimization benchmarking 2009: Noiseless functions definitions.* [PDF](https://github.com/maxencefaldor/bbobax/raw/main/docs/assets/bbob-noiseless.pdf)
+- Hansen, N., Finck, S., Ros, R., & Auger, A. (2009). *Real-parameter black-box optimization benchmarking 2009: Noisy functions definitions.* [PDF](https://github.com/maxencefaldor/bbobax/raw/main/docs/assets/bbob-noisy.pdf)
+- Vermetten, D., Ye, F., Bäck, T., & Doerr, C. (2023). *MA-BBOB: A problem generator for black-box optimization using affine combinations and shifts.* [arXiv](https://arxiv.org/abs/2312.11083)
 
-*   **Noiseless Functions**: Hansen, N., Finck, S., Ros, R., & Auger, A. (2009). *Real-parameter black-box optimization benchmarking 2009: Noiseless functions definitions*. [PDF](https://github.com/maxencefaldor/bbobax/raw/main/docs/assets/bbob-noiseless.pdf)
-*   **Noisy Functions**: Hansen, N., Finck, S., Ros, R., & Auger, A. (2009). *Real-parameter black-box optimization benchmarking 2009: Noisy functions definitions*. [PDF](https://github.com/maxencefaldor/bbobax/raw/main/docs/assets/bbob-noisy.pdf)
+## Contributing
+
+Contributions are welcome. Fidelity is the contract: any new function, model, or suite comes with a numerical alignment test against its official reference.
