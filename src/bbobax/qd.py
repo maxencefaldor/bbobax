@@ -109,6 +109,8 @@ class Descriptor(Protocol):
     one should not require importing anything from bbobax.
     """
 
+    # The descriptor's name, and its key in `DESCRIPTORS`.
+    name: str
     # Dimensionality of the descriptor space.
     descriptor_size: int
     # Exact bounds of the descriptor, per component, for solutions inside the
@@ -194,6 +196,8 @@ class RandomProjection(_Projection):
 
     """
 
+    name = "random_projection"
+
     def sample(
         self, key: jax.Array, problem: BBOBProblem, params: BBOBParams
     ) -> jax.Array:
@@ -244,6 +248,8 @@ class IrregularProjection(RandomProjection):
 
     """
 
+    name = "irregular_projection"
+
     # Asymmetry, the paper's beta at its most common setting.
     beta: float = 0.2
 
@@ -276,6 +282,8 @@ class QuantizedProjection(RandomProjection):
             `2 / num_levels`.
 
     """
+
+    name = "quantized_projection"
 
     # Levels per component.
     num_levels: int = 10
@@ -321,6 +329,8 @@ class FourierProjection(_Projection):
             with it.
 
     """
+
+    name = "fourier_projection"
 
     # The sensitivity dial.
     bandwidth: float = 1.0
@@ -398,6 +408,8 @@ class SubsetProjection(_Projection):
 
     """
 
+    name = "subset_projection"
+
     def __init__(self, descriptor_size: int = 2, subset_size: int | None = None):
         """Initialize the descriptor."""
         super().__init__(descriptor_size)
@@ -460,6 +472,8 @@ class AlignedProjection(RandomProjection):
 
     """
 
+    name = "aligned_projection"
+
     # The coupling dial.
     alignment: float = 1.0
 
@@ -500,6 +514,24 @@ class AlignedProjection(RandomProjection):
             : self.descriptor_size
         ]
         return self._normalize(mixed, problem)
+
+
+# The descriptor families, keyed by their own name -- one per phenomenon, in
+# the module's order from baseline to coupled. The parallel of
+# `BBOB_PROBLEMS` and `NOISE_MODELS`: what lets a config name a descriptor
+# the way it names a function.
+_DESCRIPTORS: tuple[type[Descriptor], ...] = (
+    RandomProjection,
+    IrregularProjection,
+    QuantizedProjection,
+    FourierProjection,
+    SubsetProjection,
+    AlignedProjection,
+)
+
+DESCRIPTORS: dict[str, type[Descriptor]] = {
+    descriptor.name: descriptor for descriptor in _DESCRIPTORS
+}
 
 
 def sphere_descriptor_optimum(

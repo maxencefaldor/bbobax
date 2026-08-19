@@ -14,6 +14,7 @@ import pytest
 
 from bbobax.bbob import BBOB_PROBLEMS, Rastrigin, Sphere
 from bbobax.qd import (
+    DESCRIPTORS,
     AlignedProjection,
     Descriptor,
     FourierProjection,
@@ -46,6 +47,17 @@ def make_instance(descriptor, num_dims=6, seed=0):
 
 
 # --- The contract, for every family ------------------------------------------
+
+
+def test_registry_is_keyed_by_each_familys_name():
+    """DESCRIPTORS holds the six families, keyed by their own name.
+
+    The parallel of `BBOB_PROBLEMS` and `NOISE_MODELS`: what lets a config
+    name a descriptor the way it names a function.
+    """
+    assert list(DESCRIPTORS.values()) == FAMILIES
+    for name, family in DESCRIPTORS.items():
+        assert family.name == name
 
 
 @pytest.mark.parametrize("family", FAMILIES)

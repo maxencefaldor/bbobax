@@ -42,6 +42,7 @@ from .noise import (
 )
 from .problem import BBOBEval, BBOBParams, BBOBProblem
 from .qd import (
+    DESCRIPTORS,
     AlignedProjection,
     Descriptor,
     FourierProjection,
@@ -96,6 +97,7 @@ __all__ = [
     "QDProblem",
     "Descriptor",
     # The descriptor families, one per phenomenon
+    "DESCRIPTORS",
     "RandomProjection",
     "IrregularProjection",
     "QuantizedProjection",
