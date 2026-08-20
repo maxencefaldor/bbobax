@@ -104,6 +104,16 @@ class Descriptor(Protocol):
     that couples the descriptor to the landscape, which is a declared design
     choice rather than the default.
 
+    **Where a family validates.** A constraint on the descriptor alone is
+    checked in `__init__`; a constraint that involves the problem -- and so
+    cannot be known until `sample` is handed one -- is checked in `sample`,
+    which is therefore allowed to raise. Both `SubsetProjection` and
+    `AlignedProjection` do. This matters to a caller building a meta-learning
+    loop: a `__init__` raise happens once at construction, while a `sample`
+    raise happens at trace time inside whatever `jit` or `vmap` encloses it.
+    Construct against the smallest `num_dims` the loop will cover and the
+    question never arises.
+
     A protocol rather than a base class, for the reason `BBOBProblem` spells
     out: descriptors share a contract, not an implementation, and satisfying
     one should not require importing anything from bbobax.
@@ -261,9 +271,6 @@ class IrregularProjection(RandomProjection):
 
     name = "irregular_projection"
 
-    # Asymmetry, the paper's beta at its most common setting.
-    beta: float = 0.2
-
     def __init__(self, descriptor_size: int = 2, beta: float = 0.2):
         """Initialize the descriptor."""
         if descriptor_size < 2:
@@ -295,9 +302,6 @@ class QuantizedProjection(RandomProjection):
     """
 
     name = "quantized_projection"
-
-    # Levels per component.
-    num_levels: int = 10
 
     def __init__(self, descriptor_size: int = 2, num_levels: int = 10):
         """Initialize the descriptor."""
@@ -342,9 +346,6 @@ class FourierProjection(_Projection):
     """
 
     name = "fourier_projection"
-
-    # The sensitivity dial.
-    bandwidth: float = 1.0
 
     def __init__(self, descriptor_size: int = 2, bandwidth: float = 1.0):
         """Initialize the descriptor."""
@@ -484,9 +485,6 @@ class AlignedProjection(RandomProjection):
     """
 
     name = "aligned_projection"
-
-    # The coupling dial.
-    alignment: float = 1.0
 
     def __init__(self, descriptor_size: int = 2, alignment: float = 1.0):
         """Initialize the descriptor."""

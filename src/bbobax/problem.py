@@ -74,8 +74,8 @@ class BBOBProblem:
     and the dimension; `sample` draws an instance of it.
 
     To cover many functions or many dimensions, hold many problems and loop
-    over them (`bbobax.suite` builds the standard 24, `bbobax.DIMENSIONS` lists
-    the standard dimensions). Under `jit` that loop unrolls, so each problem
+    over them (`bbobax.bbob_suite` builds the standard 24, `bbobax.DIMENSIONS`
+    lists the standard dimensions). Under `jit` that loop unrolls, so each problem
     keeps its own compiled code and nothing pays for dispatch -- unlike a
     single problem that switches over functions, which under `vmap` must
     evaluate every branch for every solution.
