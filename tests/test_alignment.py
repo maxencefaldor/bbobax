@@ -2,30 +2,30 @@
 
 Every numerically matchable function (all 24 except the two Gallagher
 functions, whose peak layouts are instance data that cannot be injected) is
-compared to the vendored ``tests/_official/bbobbenchmarks.py`` on identical
-instances in float64: the official instance's ``xopt``/``fopt`` and rotation
+compared to the vendored `tests/_official/bbobbenchmarks.py` on identical
+instances in float64: the official instance's `xopt`/`fopt` and rotation
 matrices are injected into bbobax params, and values must agree to 1e-9
-relative error. float64 is enabled globally in ``conftest.py``.
+relative error. float64 is enabled globally in `conftest.py`.
 
-The comparison calls ``problem._value`` rather than ``problem.evaluate``: it is
-the raw ``(value, penalty)`` pair the official implementation is defined in
-terms of, before noise and ``f_opt``.
+The comparison calls `problem._value` rather than `problem.evaluate`: it is
+the raw `(value, penalty)` pair the official implementation is defined in
+terms of, before noise and `f_opt`.
 
-Conventions bridged here (see ``_INSTANCE_MAPPINGS``):
+Conventions bridged here (see `_INSTANCE_MAPPINGS`):
 
-- ``bbobbenchmarks`` is row-vector (``x @ M``), bbobax column-vector
-  (``M @ x``): official matrices enter transposed.
-- ``params.x_opt = official.xopt`` directly for every function -- bbobax's
+- `bbobbenchmarks` is row-vector (`x @ M`), bbobax column-vector
+  (`M @ x`): official matrices enter transposed.
+- `params.x_opt = official.xopt` directly for every function -- bbobax's
   per-function x_opt conventions mirror what the official code stores.
 
 Every non-trivial rotation mapping is verified in-test by reconstructing the
-official product matrix (``linearTF``) to <= 1e-10, so a regression in the
+official product matrix (`linearTF`) to <= 1e-10, so a regression in the
 mapping itself fails loudly rather than producing a confusing value mismatch.
 
 The Gallagher functions get structural tests instead: the value formula is
 checked against an independent numpy implementation of the paper formula on
 bbobax's own generated peak layout, and the layout's dependence on
-``params.key`` is pinned (regression for the frozen-layout bug).
+`params.key` is pinned (regression for the frozen-layout bug).
 """
 
 import jax
@@ -65,8 +65,8 @@ def _map_rotation_only(off, D):
 def _map_f6(off, D):
     """f6 attractive_sector.
 
-    Official: ``linearTF = R2 @ diag(scales) @ rotation`` with
-    ``rotation = R(rseed + 1e6)``; column-effective z = rotation^T @
+    Official: `linearTF = R2 @ diag(scales) @ rotation` with
+    `rotation = R(rseed + 1e6)`; column-effective z = rotation^T @
     diag(scales) @ R2^T @ (x - xopt). bbobax computes z = q @ (lambda * (r @
     (x - xopt))), so q = rotation^T and r = R2^T, with R2 reconstructed from
     linearTF.
@@ -83,9 +83,9 @@ def _map_f6(off, D):
 def _map_f7(off, D):
     """f7 step_ellipsoidal.
 
-    Official: ``linearTF = R(rseed) @ diag(s)`` with s = sqrt(10)^linspace
-    (note: NOT ``off.scales``, which holds the 100^linspace core weights), and
-    the outer ``rotation = R(rseed + 1e6)``. bbobax z_hat = lambda * (r @ .),
+    Official: `linearTF = R(rseed) @ diag(s)` with s = sqrt(10)^linspace
+    (note: NOT `off.scales`, which holds the 100^linspace core weights), and
+    the outer `rotation = R(rseed + 1e6)`. bbobax z_hat = lambda * (r @ .),
     z = q @ z_tilde, so r comes from the linearTF side and q = rotation^T.
     """
     s = np.sqrt(10.0) ** np.linspace(0.0, 1.0, D)
@@ -99,7 +99,7 @@ def _map_f7(off, D):
 
 
 def _map_scaled_rotation(off, D):
-    """f9/f19: ``linearTF = scale * R(rseed)``; r = (linearTF / scale)^T.
+    """f9/f19: `linearTF = scale * R(rseed)`; r = (linearTF / scale)^T.
 
     The official optimum is derived from the rotation
     (xopt = R (0.5 / scale) 1); bbobax's placeable-optimum parameterization is
@@ -117,8 +117,8 @@ def _map_scaled_rotation(off, D):
 def _map_f13(off, D):
     """f13 sharp_ridge -- the flipped sandwich.
 
-    Official: ``linearTF = R(rseed) @ diag(scales) @ rotation`` with
-    ``rotation = R(rseed + 1e6)``, applied as one product; bbobax applies
+    Official: `linearTF = R(rseed) @ diag(scales) @ rotation` with
+    `rotation = R(rseed + 1e6)`, applied as one product; bbobax applies
     r first and q last, so r = R(rseed)^T (inner) and q = rotation^T (outer).
     """
     R0 = np.asarray(bb.compute_rotation(off.rseed, D))
@@ -132,7 +132,7 @@ def _map_f13(off, D):
 
 
 def _map_sandwich(off, D):
-    """f15/f16: ``linearTF = R(rseed) @ diag(scales) @ rotation``.
+    """f15/f16: `linearTF = R(rseed) @ diag(scales) @ rotation`.
 
     bbobax applies r = rotation^T first (and, for these functions, again
     last), q = R(rseed)^T in the middle -- the mirror of f13.
@@ -148,7 +148,7 @@ def _map_sandwich(off, D):
 
 
 def _map_sandwich_no_tail(off, D):
-    """f17/f18: ``linearTF = R(rseed) @ diag(scales)`` (no trailing rotation).
+    """f17/f18: `linearTF = R(rseed) @ diag(scales)` (no trailing rotation).
 
     r = rotation^T (rotation = R(rseed + 1e6)), q = R(rseed)^T; the diagonal
     scaling is bbobax's own lambda, applied after q.
@@ -165,7 +165,7 @@ def _map_sandwich_no_tail(off, D):
 
 
 def _map_inner_from_linear_tf(off, D):
-    """f23/f24: ``linearTF = A @ diag(scales) @ rotation`` with A = R(rseed).
+    """f23/f24: `linearTF = A @ diag(scales) @ rotation` with A = R(rseed).
 
     A is reconstructed from linearTF; r = A^T (inner), q = rotation^T (outer).
     """
@@ -298,7 +298,7 @@ _GALLAGHER = {
 def _gallagher_layout(name, D, instance_key, x_opt):
     """Replicate the layout generation of the bbobax Gallagher functions.
 
-    Mirrors the PRNG call sequence in ``functions._Gallagher._value`` exactly
+    Mirrors the PRNG call sequence in `functions._Gallagher._value` exactly
     (fold_in with the function's tag, then permutation / per-peak diagonal
     permutations / peak positions). Returns numpy (w, diagonals, y).
     """

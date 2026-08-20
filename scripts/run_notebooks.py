@@ -1,15 +1,15 @@
 """Execute every notebook, failing on the first error.
 
-The ``%pip install`` cells are skipped: whoever runs this already has the
+The `%pip install` cells are skipped: whoever runs this already has the
 environment. Everything else runs, so a notebook that drifts from the API is a
 CI failure rather than a surprise for the next reader.
 
     uv run python scripts/run_notebooks.py [notebook ...]
     uv run python scripts/run_notebooks.py --save [notebook ...]
 
-``--save`` writes the fresh outputs back. The docs render *stored* outputs, so
+`--save` writes the fresh outputs back. The docs render *stored* outputs, so
 a notebook whose code was updated but whose outputs were not will show a reader
-an API that no longer exists -- run with ``--save`` after any API change.
+an API that no longer exists -- run with `--save` after any API change.
 """
 
 import copy

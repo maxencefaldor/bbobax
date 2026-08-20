@@ -26,8 +26,8 @@ OFFICIAL_SCALES = (
 def official_combine(component_values, weights, scales=OFFICIAL_SCALES):
     """`ManyAffine::evaluate`'s combination, transcribed into numpy.
 
-    ``f0 = clamp(f0, 1e-12, 1e20); f0 = (log10(f0) + 8) / scale; f0 *= w;``
-    summed, then ``pow(10, 10 * result - 8)``.
+    `f0 = clamp(f0, 1e-12, 1e20); f0 = (log10(f0) + 8) / scale; f0 *= w;`
+    summed, then `pow(10, 10 * result - 8)`.
     """
     result = 0.0
     for value, weight, scale in zip(component_values, weights, scales):

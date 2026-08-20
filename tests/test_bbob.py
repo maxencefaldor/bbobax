@@ -39,7 +39,7 @@ def test_registry_is_the_standard_24():
 def test_value_shapes_and_optimum(name, mock_params):
     """Each function returns scalars and bottoms out at x_opt.
 
-    The x_opt constraints are applied by ``sample``, so a real instance is the
+    The x_opt constraints are applied by `sample`, so a real instance is the
     honest way to build params; the identity-rotation mock is kept for the
     shape checks.
     """

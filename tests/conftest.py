@@ -25,7 +25,7 @@ def mock_params():
     """Create mock BBOB parameters factory.
 
     One problem = one function at one fixed dimension, so the instance carries
-    no function id and no dimension: every array is exactly ``num_dims`` long.
+    no function id and no dimension: every array is exactly `num_dims` long.
     """
 
     def _get_mock_params(num_dims: int) -> BBOBParams:
