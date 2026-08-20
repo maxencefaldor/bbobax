@@ -18,7 +18,7 @@ jobs:
         with:
           enable-cache: true
 
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
 
       - name: ruff check
         run: uv run ruff check .
@@ -46,7 +46,7 @@ jobs:
           enable-cache: true
 
       - name: Install
-        run: uv sync --extra dev --python ${{ matrix.python-version }}
+        run: uv sync --group dev --python ${{ matrix.python-version }}
 
       - name: Test
         # The alignment suite compares every function against the vendored
@@ -54,8 +54,8 @@ jobs:
         #
         # `uv run` re-resolves the interpreter from .python-version unless
         # told otherwise, which would silently rebuild the environment the
-        # Install step just made -- without the dev extra, hence without
+        # Install step just made -- without the dev group, hence without
         # pytest. Naming both keeps the step self-sufficient.
         run: >
-          uv run --python ${{ matrix.python-version }} --extra dev
+          uv run --python ${{ matrix.python-version }} --group dev
           pytest tests/ --cov=bbobax --cov-report=term-missing

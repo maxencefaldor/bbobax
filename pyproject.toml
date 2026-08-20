@@ -1,7 +1,7 @@
 [project]
 name = "bbobax"
 version = "0.2.2"
-description = "BBOBax: Accelerated Black-Box Optimization Benchmark."
+description = "Black-Box Optimization Benchmarking in JAX."
 authors = [{ name="Maxence Faldor", email="maxencefaldor@gmail.com" }]
 readme = "README.md"
 license = "MIT"
@@ -26,7 +26,20 @@ classifiers = [
 	"Operating System :: OS Independent",
 ]
 
+# The one extra a *user* installs: the notebooks published to Colab open with
+# `pip install bbobax[notebooks]`, so this set is part of what the package
+# publishes. Everything needed only to work on bbobax is a dependency group
+# below, which never reaches PyPI.
 [project.optional-dependencies]
+notebooks = [
+	"ipykernel",
+	"ipywidgets",
+	"evosax",
+	"scikit-learn",
+	"mediapy",
+]
+
+[dependency-groups]
 dev = [
 	"pytest",
 	"pytest-cov",
@@ -39,13 +52,6 @@ docs = [
 	"mkdocs-material",
 	"mkdocstrings[python]",
 	"mkdocs-jupyter",
-]
-notebooks = [
-	"ipykernel",
-	"ipywidgets",
-	"evosax",
-	"scikit-learn",
-	"mediapy",
 ]
 
 [project.urls]

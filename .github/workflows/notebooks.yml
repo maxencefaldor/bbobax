@@ -37,10 +37,10 @@ jobs:
         with:
           enable-cache: true
 
-      - run: uv sync --extra dev --extra notebooks
+      - run: uv sync --group dev --extra notebooks
 
       - name: Execute notebooks
         # Every notebook is documentation that has to keep working. The %pip
         # cells are skipped: the environment is already installed. The extras
         # are named again because `uv run` re-syncs without them otherwise.
-        run: uv run --extra dev --extra notebooks python scripts/run_notebooks.py
+        run: uv run --group dev --extra notebooks python scripts/run_notebooks.py

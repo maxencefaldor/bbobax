@@ -87,6 +87,15 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+notebooks = [
+    { name = "evosax" },
+    { name = "ipykernel" },
+    { name = "ipywidgets" },
+    { name = "mediapy" },
+    { name = "scikit-learn" },
+]
+
+[package.dev-dependencies]
 dev = [
     { name = "nbclient" },
     { name = "pytest" },
@@ -100,13 +109,6 @@ docs = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
 ]
-notebooks = [
-    { name = "evosax" },
-    { name = "ipykernel" },
-    { name = "ipywidgets" },
-    { name = "mediapy" },
-    { name = "scikit-learn" },
-]
 
 [package.metadata]
 requires-dist = [
@@ -116,18 +118,24 @@ requires-dist = [
     { name = "ipywidgets", marker = "extra == 'notebooks'" },
     { name = "jax", specifier = ">=0.8.0" },
     { name = "mediapy", marker = "extra == 'notebooks'" },
-    { name = "mkdocs", marker = "extra == 'docs'" },
-    { name = "mkdocs-jupyter", marker = "extra == 'docs'" },
-    { name = "mkdocs-material", marker = "extra == 'docs'" },
-    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'" },
-    { name = "nbclient", marker = "extra == 'dev'" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "pytest-cov", marker = "extra == 'dev'" },
-    { name = "ruff", marker = "extra == 'dev'" },
     { name = "scikit-learn", marker = "extra == 'notebooks'" },
-    { name = "ty", marker = "extra == 'dev'" },
 ]
-provides-extras = ["dev", "docs", "notebooks"]
+provides-extras = ["notebooks"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "nbclient" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+docs = [
+    { name = "mkdocs" },
+    { name = "mkdocs-jupyter" },
+    { name = "mkdocs-material" },
+    { name = "mkdocstrings", extras = ["python"] },
+]
 
 [[package]]
 name = "beautifulsoup4"
