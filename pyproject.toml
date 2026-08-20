@@ -70,11 +70,9 @@ extend-exclude = ["tests/_official/bbobbenchmarks.py"]
 select = ["E", "D", "F", "I", "N", "SIM", "UP", "W"]
 ignore = [
 	"D203",  # incorrect-blank-line-before-class
-	"D206",  # docstring-tab-indentation
 	"D213",  # multi-line-summary-second-line
-	"N803",  # non-lowercase-variable-in-function
-	"N806",  # invalid-argument-name
-	"W191",  # tab-indentation
+	"N803",  # invalid-argument-name
+	"N806",  # non-lowercase-variable-in-function
 ]
 
 [tool.ruff.lint.per-file-ignores]
