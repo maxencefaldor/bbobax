@@ -23,13 +23,12 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
-from flax.struct import dataclass
+from flax.struct import PyTreeNode
 
 from .noise import Noiseless, NoiseModel
 
 
-@dataclass
-class BBOBParams:
+class BBOBParams(PyTreeNode):
     """One sampled instance of a problem.
 
     Everything that varies between instances lives here, drawn once by
@@ -59,8 +58,7 @@ class BBOBParams:
     noise_model: Any
 
 
-@dataclass
-class BBOBEval:
+class BBOBEval(PyTreeNode):
     """What evaluating a solution yields."""
 
     fitness: jax.Array

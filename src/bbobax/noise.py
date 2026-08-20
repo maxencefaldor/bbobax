@@ -39,7 +39,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import jax
 import jax.numpy as jnp
-from flax.struct import dataclass
+from flax.struct import PyTreeNode
 
 # The target precision BBOB measures against, and the floor the official noise
 # models leave undisturbed (`bbobbenchmarks.py`: `tol = 1e-8`).
@@ -121,8 +121,7 @@ class NoiseModel(Protocol):
 # rule a descriptor follows for `QDParams.descriptor`.
 
 
-@dataclass
-class NoiselessParams:
+class NoiselessParams(PyTreeNode):
     """`Noiseless` draws nothing."""
 
 
@@ -146,8 +145,7 @@ class Noiseless:
         return value
 
 
-@dataclass
-class GaussianParams:
+class GaussianParams(PyTreeNode):
     """Settings of the Gaussian model."""
 
     beta: jax.Array
@@ -196,8 +194,7 @@ class Gaussian:
         return stabilize(value, noisy)
 
 
-@dataclass
-class UniformParams:
+class UniformParams(PyTreeNode):
     """Settings of the uniform model."""
 
     alpha: jax.Array
@@ -269,8 +266,7 @@ class Uniform:
         return stabilize(value, noisy)
 
 
-@dataclass
-class CauchyParams:
+class CauchyParams(PyTreeNode):
     """Settings of the Cauchy model."""
 
     alpha: jax.Array
@@ -337,8 +333,7 @@ class Cauchy:
         return stabilize(value, noisy)
 
 
-@dataclass
-class MixtureParams:
+class MixtureParams(PyTreeNode):
     """Settings of `Mixture`: which model fired, and every model's settings."""
 
     model_id: jax.Array

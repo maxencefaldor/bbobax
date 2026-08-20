@@ -60,14 +60,13 @@ from typing import Any, Protocol, runtime_checkable
 
 import jax
 import jax.numpy as jnp
-from flax.struct import dataclass
+from flax.struct import PyTreeNode
 
 from .problem import BBOBParams, BBOBProblem
 from .transforms import transform_asy, transform_osz
 
 
-@dataclass
-class QDParams:
+class QDParams(PyTreeNode):
     """One sampled instance of a Quality-Diversity problem.
 
     Composed, not inherited: a QD problem is a problem paired with a
@@ -82,8 +81,7 @@ class QDParams:
     descriptor: Any
 
 
-@dataclass
-class QDEval:
+class QDEval(PyTreeNode):
     """What evaluating a solution on a Quality-Diversity problem yields."""
 
     fitness: jax.Array
@@ -318,8 +316,7 @@ class QuantizedProjection(RandomProjection):
         return (level + 0.5) * width - 1.0
 
 
-@dataclass
-class FourierParams:
+class FourierParams(PyTreeNode):
     """One sampled instance of `FourierProjection`."""
 
     weights: jax.Array
@@ -396,8 +393,7 @@ class FourierProjection(_Projection):
         return jnp.cos(params.weights @ x + params.phase)
 
 
-@dataclass
-class SubsetParams:
+class SubsetParams(PyTreeNode):
     """One sampled instance of `SubsetProjection`."""
 
     subset: jax.Array
