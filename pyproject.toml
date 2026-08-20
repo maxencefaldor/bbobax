@@ -69,8 +69,16 @@ extend-exclude = ["tests/_official/bbobbenchmarks.py"]
 [tool.ruff.lint]
 select = ["E", "D", "F", "I", "N", "SIM", "UP", "W"]
 ignore = [
+	# D211 is the same choice made the other way -- no blank line before a class
+	# docstring -- and ruff ships both. Only one of the pair can hold.
 	"D203",  # incorrect-blank-line-before-class
+	# D212 is the same choice made the other way: the summary starts on the line
+	# the docstring opens on.
 	"D213",  # multi-line-summary-second-line
+	# The functions are transcribed from the BBOB definitions, which name their
+	# terms in single capitals -- R and Q for the rotations, D for a diagonal --
+	# and the notebooks plot meshgrids as X, Y, Z. Renaming them would break the
+	# correspondence to the reference this package is verified against.
 	"N803",  # invalid-argument-name
 	"N806",  # non-lowercase-variable-in-function
 ]
