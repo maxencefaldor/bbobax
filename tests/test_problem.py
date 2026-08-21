@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from bbobax.bbob import BBOB_PROBLEMS, Rastrigin, Sphere, bbob_suite
+from bbobax.bbob import BBOB_PROBLEMS, Rastrigin, Sphere, StepEllipsoidal, bbob_suite
 from bbobax.noise import Noiseless
 from bbobax.problem import BBOBEval, BBOBParams, BBOBProblem
 
@@ -119,9 +119,9 @@ def test_suite_builds_the_standard_24():
         assert type(problem) is BBOB_PROBLEMS[name]
 
     # A subset is selectable, and kwargs reach every problem.
-    subset = bbob_suite(["sphere", "discus"], num_dims=3, clip_x=True)
+    subset = bbob_suite(["sphere", "discus"], num_dims=3, sample_rotation=False)
     assert list(subset) == ["sphere", "discus"]
-    assert all(p.num_dims == 3 and p.clip_x for p in subset.values())
+    assert all(p.num_dims == 3 and not p.sample_rotation for p in subset.values())
 
 
 def test_suite_rejects_unknown_names():
@@ -194,16 +194,23 @@ def test_default_noise_is_noiseless():
     assert values[0] == pytest.approx(float(val) + float(pen) + float(params.f_opt))
 
 
-def test_clip_x_clips():
-    """clip_x pulls solutions back into the box before the function sees them."""
-    problem = Sphere(num_dims=3, clip_x=True)
+def test_a_solution_outside_the_box_is_evaluated_where_it_is():
+    """Nothing clips: the boundary is the function's penalty, not a projection.
+
+    Clipping would be evaluated before the penalty and so would compute it at
+    the wrong point -- for the functions that penalize `x` directly it zeroes
+    the term, which is COCO's boundary handling removed.
+    """
+    problem = StepEllipsoidal(num_dims=3)
     params = problem.sample(jax.random.key(0))
 
     outside = jnp.array([9.0, -9.0, 0.0])
     clipped = jnp.clip(outside, -5.0, 5.0)
+    key = jax.random.key(1)
 
-    assert float(problem.evaluate(jax.random.key(1), outside, params).fitness) == (
-        pytest.approx(
-            float(problem.evaluate(jax.random.key(1), clipped, params).fitness)
-        )
+    assert float(problem.evaluate(key, outside, params).fitness) != pytest.approx(
+        float(problem.evaluate(key, clipped, params).fitness)
     )
+    # The difference is exactly the boundary penalty, which vanishes inside.
+    assert float(problem._value(outside, params)[1]) > 0.0
+    assert float(problem._value(clipped, params)[1]) == 0.0

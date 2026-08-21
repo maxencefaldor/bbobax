@@ -82,9 +82,9 @@ class BBOBProblem:
     definition constrains where the optimum can be.
 
     **Every default here is COCO's**, not a neutral choice: the box is
-    [-5, 5]^D, the optimum is drawn from [-4, 4]^D, rotations are on, and
-    nothing clips because BBOB handles the boundary with an in-function
-    penalty. A problem built with the defaults is the noiseless bbob suite's,
+    [-5, 5]^D, the optimum is drawn from [-4, 4]^D, rotations are on, and the
+    boundary is handled by an in-function penalty rather than by clipping. A
+    problem built with the defaults is the noiseless bbob suite's,
     and the deviations from COCO are listed in the README rather than hidden in
     a signature.
 
@@ -93,7 +93,7 @@ class BBOBProblem:
     `Gaussian.sample` and `Cauchy.sample` have nothing in common -- so there
     would be nothing for a base class to hold, and a third party should be able
     to plug one in by shape alone. This one shares almost everything: instance
-    generation, clipping, noise application and the boundary-penalty convention
+    generation, noise application and the boundary-penalty convention
     are written once here and a subclass fills in one hole. It also narrows
     nothing -- `_value` has the same signature in all 24 -- so inheritance
     stays substitutable, which is exactly what a per-model `apply` could not
@@ -109,7 +109,6 @@ class BBOBProblem:
         x_range: tuple[float, float] = (-5.0, 5.0),
         x_opt_range: tuple[float, float] = (-4.0, 4.0),
         f_opt_range: tuple[float, float] = (0.0, 0.0),
-        clip_x: bool = False,
         sample_rotation: bool = True,
         noise_model: NoiseModel | None = None,
     ):
@@ -117,15 +116,16 @@ class BBOBProblem:
 
         Args:
             num_dims: The problem dimension, at least 2 as BBOB requires.
-            x_range: Range of input variables.
+            x_range: The search box. Solutions are drawn from it and QD
+                descriptors are normalized against it, but nothing is held to
+                it: BBOB is defined on all of R^D and about ten of the 24
+                functions carry their own penalty for leaving the box.
             x_opt_range: Range the optimum is drawn from. BBOB uses [-4, 4].
                 This is the *default* draw: a function whose definition pins its
                 optimum elsewhere overrides `_sample_x_opt` and may ignore it.
             f_opt_range: Range of optimal fitness values. The default pins
                 f_opt to 0; official BBOB draws a 2-decimal Cauchy clipped to
                 +-1000 -- configure that explicitly if you want it.
-            clip_x: Whether to clip input variables. Official BBOB never
-                clips: boundary handling is the in-function penalty.
             sample_rotation: Whether to sample rotation matrices. BBOB always
                 rotates; with False, R = Q = I and every rotated variant
                 collapses onto its axis-aligned base function (measured:
@@ -145,7 +145,6 @@ class BBOBProblem:
         self.x_range = x_range
         self.x_opt_range = x_opt_range
         self.f_opt_range = f_opt_range
-        self.clip_x = clip_x
         self.sample_rotation = sample_rotation
 
         # Default is the plain noiseless suite -- exactly COCO's noiseless
@@ -192,18 +191,22 @@ class BBOBProblem:
     def evaluate(self, key: jax.Array, x: jax.Array, params: BBOBParams) -> BBOBEval:
         """Evaluate the fitness of a solution.
 
+        `x` is evaluated as given, wherever it is: BBOB is defined on all of
+        R^D, and a solution outside the box is scored by the function's own
+        boundary penalty rather than pulled back to the edge. Clipping here
+        would compute that penalty at the clipped point, which for the
+        functions that penalize `x` directly switches the term off entirely.
+
         Args:
             key: JAX random key, consumed by the noise model.
-            x: Input solution, shape `(num_dims,)`.
+            x: Input solution, shape `(num_dims,)`. Not required to lie in
+                `x_range`.
             params: Instance parameters.
 
         Returns:
             The evaluation results.
 
         """
-        if self.clip_x:
-            x = jnp.clip(x, self.x_range[0], self.x_range[1])
-
         value, penalty = self._value(x, params)
 
         # Noise applies to the raw value alone; the boundary penalty and f_opt
