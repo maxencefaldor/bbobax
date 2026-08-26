@@ -28,7 +28,9 @@ jobs:
     # Trusted publishing: PyPI trusts this workflow via OIDC, so no token is
     # stored anywhere. One-time setup on pypi.org: the project's Publishing
     # settings name this repository, this file, and this environment.
-    environment: pypi
+    environment:
+      name: pypi
+      url: https://pypi.org/p/bbobax
     permissions:
       id-token: write
 
