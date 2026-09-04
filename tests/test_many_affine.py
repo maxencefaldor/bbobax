@@ -30,7 +30,7 @@ def official_combine(component_values, weights, scales=OFFICIAL_SCALES):
     summed, then `pow(10, 10 * result - 8)`.
     """
     result = 0.0
-    for value, weight, scale in zip(component_values, weights, scales):
+    for value, weight, scale in zip(component_values, weights, scales, strict=True):
         f0 = min(max(float(value), 1e-12), 1e20)
         result += weight * (np.log10(f0) + 8.0) / scale
     return 10.0 ** (10.0 * result - 8.0)
@@ -42,7 +42,7 @@ def component_values_of(problem, x, params):
     keys = jax.random.split(key_components, len(problem.components))
 
     values = []
-    for component, key in zip(problem.components, keys):
+    for component, key in zip(problem.components, keys, strict=True):
         component_params = component.sample(key)
         x0 = x + component_params.x_opt - params.x_opt
         value, penalty = component._value(x0, component_params)

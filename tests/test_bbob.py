@@ -31,7 +31,7 @@ def test_registry_is_the_standard_24():
         assert problem_class.name == name
 
     # f1 and f24 pin the canonical order the dict preserves.
-    assert list(BBOB_PROBLEMS)[0] == "sphere"
+    assert next(iter(BBOB_PROBLEMS)) == "sphere"
     assert list(BBOB_PROBLEMS)[-1] == "lunacek"
 
 
@@ -66,7 +66,7 @@ def test_value_jit_vmap(name, mock_params):
     params = mock_params(num_dims)
 
     # JIT test
-    val, pen = jax.jit(problem._value)(jnp.ones(num_dims), params)
+    val, _pen = jax.jit(problem._value)(jnp.ones(num_dims), params)
     assert val.shape == ()
 
     # VMAP test

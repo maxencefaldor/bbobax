@@ -78,7 +78,7 @@ def main() -> int:
     for name in names:
         try:
             seconds = execute(NOTEBOOKS / name, save=save)
-        except Exception as error:  # noqa: BLE001 - the notebook's error is the report
+        except Exception as error:
             print(f"FAIL  {name}\n{error}", file=sys.stderr)
             failed.append(name)
         else:

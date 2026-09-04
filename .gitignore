@@ -17,6 +17,7 @@ wheels/
 # Tool caches
 .pytest_cache
 .ruff_cache
+.rumdl_cache
 .coverage
 
 # Editor and OS droppings
