@@ -127,7 +127,7 @@ def test_descriptor_size_is_validated(family):
 def test_random_projection_bounds_are_tight():
     """The bound is achieved: the right box corner maps to exactly +-1."""
     descriptor = RandomProjection(descriptor_size=2)
-    problem, params = make_instance(descriptor)
+    _problem, params = make_instance(descriptor)
 
     for row in np.asarray(params):
         corner = 5.0 * np.sign(row)
@@ -190,7 +190,7 @@ def test_quantized_projection_jumps():
     """
     num_levels = 10
     descriptor = QuantizedProjection(descriptor_size=1, num_levels=num_levels)
-    problem, params = make_instance(descriptor, num_dims=2)
+    _problem, params = make_instance(descriptor, num_dims=2)
 
     # March along a direction that moves the projection, in tiny steps.
     direction = jnp.asarray(np.sign(np.asarray(params))[0])
@@ -227,7 +227,7 @@ def test_fourier_projection_sensitivity_scales_with_bandwidth():
 def test_fourier_projection_is_bounded_everywhere():
     """A cosine needs no box: bounded even far outside the search space."""
     descriptor = FourierProjection(descriptor_size=2)
-    problem, params = make_instance(descriptor)
+    _problem, params = make_instance(descriptor)
 
     far = 100.0 * jax.random.normal(jax.random.key(1), shape=(64, 6))
     values = jax.vmap(descriptor.evaluate, in_axes=(None, 0, None))(

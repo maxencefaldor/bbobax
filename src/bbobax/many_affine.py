@@ -133,7 +133,7 @@ class ManyAffine(BBOBProblem):
         keys = jax.random.split(key_components, len(self.components))
 
         values = []
-        for component, key in zip(self.components, keys):
+        for component, key in zip(self.components, keys, strict=True):
             component_params = component.sample(key)
             # Each component is asked at its own optimum when x is ours, which
             # is what anchors the combination. The shift can leave the box, so

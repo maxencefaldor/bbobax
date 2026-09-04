@@ -324,7 +324,7 @@ def _gallagher_layout(name, D, instance_key, x_opt):
     key, subkey = jax.random.split(key)
     keys = jax.random.split(subkey, num_optima)
     perms = jax.vmap(lambda k: jax.random.permutation(k, D))(keys)
-    diags = np.stack([d[p] for d, p in zip(diags, np.asarray(perms))])
+    diags = np.stack([d[p] for d, p in zip(diags, np.asarray(perms), strict=True)])
 
     key, subkey = jax.random.split(key)
     # np.array (not asarray): arrays converted from JAX are read-only.

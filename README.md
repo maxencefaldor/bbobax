@@ -1,3 +1,4 @@
+<!-- rumdl-disable MD033 MD041 -->
 <div align="center">
   <h1>BBOBax</h1>
   <p>Black-Box Optimization Benchmarking in JAX.</p>
@@ -7,14 +8,19 @@
   <a href="https://github.com/google/jax"><img alt="JAX" src="https://img.shields.io/badge/JAX-Accelerated-9cf"></img></a>
 </div>
 <br>
+<!-- rumdl-enable MD033 MD041 -->
 
-BBOBax is a JAX implementation of [COCO](https://coco-platform.org/)'s BBOB benchmark: the 24 standard noiseless functions, the noisy suite f101–f130, and Many-Affine BBOB. Every function is jit-compilable and vmap-friendly, so populations, instances, and whole experiments run as single compiled programs on CPU, GPU, or TPU — and every value is verified numerically against the official implementation.
+BBOBax is a JAX implementation of [COCO](https://coco-platform.org/)'s BBOB benchmark: the 24 standard noiseless functions, the noisy suite f101–f130, and Many-Affine BBOB.
+Every function is jit-compilable and vmap-friendly, so populations, instances, and whole experiments run as single compiled programs on CPU, GPU, or TPU — and every value is verified numerically against the official implementation.
 
 ## Why BBOBax?
 
-- **Faithful** 🎯 — verified against the official 2009 BBOB implementation on identical instances, to ≤ 1e-9 relative in float64, re-proven on every test run. Where the papers and the official code disagree, the code wins, with a comment at the site.
-- **Fast** ⚡ — one `vmap` evaluates a population, another batches instances, and `jit` compiles the whole optimization loop. Nothing is stateful, so nothing blocks vectorization.
-- **Simple** 🌱 — one contract: a problem is one function at one dimension, `sample(key)` draws an instance, `evaluate(key, x, params)` scores a solution. A suite is a plain `dict`.
+- **Faithful** 🎯 — verified against the official 2009 BBOB implementation on identical instances, to ≤ 1e-9 relative in float64, re-proven on every test run.
+  Where the papers and the official code disagree, the code wins, with a comment at the site.
+- **Fast** ⚡ — one `vmap` evaluates a population, another batches instances, and `jit` compiles the whole optimization loop.
+  Nothing is stateful, so nothing blocks vectorization.
+- **Simple** 🌱 — one contract: a problem is one function at one dimension, `sample(key)` draws an instance, `evaluate(key, x, params)` scores a solution.
+  A suite is a plain `dict`.
 - **Composable** 🧩 — noise models are held by problems, any function pairs with any descriptor for Quality-Diversity, and Many-Affine blends all 24 into a continuous space of problems.
 
 ## Suites
@@ -31,6 +37,7 @@ A suite is a `dict[str, BBOBProblem]` — composing your own is a dict comprehen
 
 ```python
 import jax
+
 from bbobax import Rastrigin
 
 problem = Rastrigin(num_dims=10)  # one function at one dimension
@@ -46,7 +53,8 @@ fitness = jax.vmap(problem.evaluate, in_axes=(0, 0, None))(
 ).fitness  # (1024,)
 ```
 
-Quality-Diversity is composition — any function pairs with any of six descriptor families (`RandomProjection`, `IrregularProjection`, `QuantizedProjection`, `FourierProjection`, `SubsetProjection`, `AlignedProjection`), each isolating one phenomenon of real behavior maps. Descriptor space is `[-1, 1]^k` by construction, so `problem.descriptor_range` is exact ground truth — whether your algorithm is told is your experiment's choice:
+Quality-Diversity is composition — any function pairs with any of six descriptor families (`RandomProjection`, `IrregularProjection`, `QuantizedProjection`, `FourierProjection`, `SubsetProjection`, `AlignedProjection`), each isolating one phenomenon of real behavior maps.
+Descriptor space is `[-1, 1]^k` by construction, so `problem.descriptor_range` is exact ground truth — whether your algorithm is told is your experiment's choice:
 
 ```python
 from bbobax import QDProblem, RandomProjection, Rastrigin
@@ -63,7 +71,8 @@ To cover many functions or dimensions, hold many problems and loop — the loop 
 import bbobax
 
 for num_dims in bbobax.DIMENSIONS:  # (2, 3, 5, 10, 20, 40), COCO's own set
-    for name, problem in bbobax.bbob_suite(num_dims=num_dims).items():
+    for problem in bbobax.bbob_suite(num_dims=num_dims).values():
+        params = problem.sample(key)
         ...
 ```
 
@@ -80,17 +89,21 @@ for num_dims in bbobax.DIMENSIONS:  # (2, 3, 5, 10, 20, 40), COCO's own set
 
 ## Fidelity
 
-The official 2009 implementation (`bbobbenchmarks.py`) is vendored as test ground truth, and `tests/test_alignment.py` re-proves the numerical agreement on every run. Guarantees you can rely on:
+The official 2009 implementation (`bbobbenchmarks.py`) is vendored as test ground truth, and `tests/test_alignment.py` re-proves the numerical agreement on every run.
+Guarantees you can rely on:
 
-- `params.x_opt` is always the function's true argmin: `f(x_opt) = f_opt` for all 24. The six functions that constrain where their optimum may sit draw it accordingly.
+- `params.x_opt` is always the function's true argmin: `f(x_opt) = f_opt` for all 24.
+  The six functions that constrain where their optimum may sit draw it accordingly.
 - Noise applies to the raw function value only; the boundary penalty and `f_opt` are added outside it, and the three official noise models stabilize themselves — below the 1e-8 target precision the undisturbed value comes back, so noise can never hide a solved problem.
 - The bbob-noisy suite is not "the 24 plus noise": boundary handling is replaced with a uniform factor of 100, each problem is pinned to one of the paper's two severities, and two of the bases are reparameterized — exactly as in the reference.
 
-Deliberate, documented deviations: instances are *sampled* from a key rather than enumerated from COCO's seed table, `f_opt` defaults to 0, and rotations are Haar on SO(n). Each deviation is documented where it lives, with the official behavior quoted.
+Deliberate, documented deviations: instances are *sampled* from a key rather than enumerated from COCO's seed table, `f_opt` defaults to 0, and rotations are Haar on SO(n).
+Each deviation is documented where it lives, with the official behavior quoted.
 
 ## Precision
 
-BBOBax follows JAX's float32 default, which is right for comparing algorithms and for meta-learning. Measuring proximity to the optimum at BBOB's 1e-8 target precision is a float64 question — float32 carries about 7 decimal digits, so on a landscape of order 1 the target sits below what the format can represent:
+BBOBax follows JAX's float32 default, which is right for comparing algorithms and for meta-learning.
+Measuring proximity to the optimum at BBOB's 1e-8 target precision is a float64 question — float32 carries about 7 decimal digits, so on a landscape of order 1 the target sits below what the format can represent:
 
 ```python
 import jax
@@ -129,10 +142,17 @@ If you use BBOBax in your research, please cite:
 
 ## References
 
-- Hansen, N., Finck, S., Ros, R., & Auger, A. (2009). *Real-parameter black-box optimization benchmarking 2009: Noiseless functions definitions.* [PDF](https://github.com/maxencefaldor/bbobax/raw/main/docs/assets/bbob-noiseless.pdf)
-- Hansen, N., Finck, S., Ros, R., & Auger, A. (2009). *Real-parameter black-box optimization benchmarking 2009: Noisy functions definitions.* [PDF](https://github.com/maxencefaldor/bbobax/raw/main/docs/assets/bbob-noisy.pdf)
-- Vermetten, D., Ye, F., Bäck, T., & Doerr, C. (2023). *MA-BBOB: A problem generator for black-box optimization using affine combinations and shifts.* [arXiv](https://arxiv.org/abs/2312.11083)
+- Hansen, N., Finck, S., Ros, R., & Auger, A. (2009).
+  *Real-parameter black-box optimization benchmarking 2009: Noiseless functions definitions.*
+  [PDF](https://github.com/maxencefaldor/bbobax/raw/main/docs/assets/bbob-noiseless.pdf)
+- Hansen, N., Finck, S., Ros, R., & Auger, A. (2009).
+  *Real-parameter black-box optimization benchmarking 2009: Noisy functions definitions.*
+  [PDF](https://github.com/maxencefaldor/bbobax/raw/main/docs/assets/bbob-noisy.pdf)
+- Vermetten, D., Ye, F., Bäck, T., & Doerr, C. (2023).
+  *MA-BBOB: A problem generator for black-box optimization using affine combinations and shifts.*
+  [arXiv](https://arxiv.org/abs/2312.11083)
 
 ## Contributing
 
-Contributions are welcome. Fidelity is the contract: any new function, model, or suite comes with a numerical alignment test against its official reference.
+Contributions are welcome.
+Fidelity is the contract: any new function, model, or suite comes with a numerical alignment test against its official reference.

@@ -8,22 +8,22 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
-	"jax>=0.8.0",
-	"flax>=0.12.0",
+    "jax>=0.8.0",
+    "flax>=0.12.0",
 ]
 keywords = [
-	"benchmark",
-	"bbob",
-	"black-box optimization",
-	"quality-diversity",
+    "benchmark",
+    "bbob",
+    "black-box optimization",
+    "quality-diversity",
 ]
 classifiers = [
-	"Programming Language :: Python :: 3.11",
-	"Programming Language :: Python :: 3.12",
-	"Programming Language :: Python :: 3.13",
-	"Programming Language :: Python :: 3.14",
-	"License :: OSI Approved :: MIT License",
-	"Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
 ]
 
 # The one extra a *user* installs: the notebooks published to Colab open with
@@ -32,26 +32,27 @@ classifiers = [
 # below, which never reaches PyPI.
 [project.optional-dependencies]
 notebooks = [
-	"ipykernel",
-	"ipywidgets",
-	"evosax",
-	"scikit-learn",
-	"mediapy",
+    "ipykernel",
+    "ipywidgets",
+    "evosax",
+    "scikit-learn",
+    "mediapy",
 ]
 
 [dependency-groups]
 dev = [
-	"pytest",
-	"pytest-cov",
-	"ruff",
-	"ty",
-	"nbclient",  # executes the notebooks in CI
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "rumdl",
+    "ty",
+    "nbclient",  # executes the notebooks in CI
 ]
 docs = [
-	"mkdocs",
-	"mkdocs-material",
-	"mkdocstrings[python]",
-	"mkdocs-jupyter",
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+    "mkdocs-jupyter",
 ]
 
 [project.urls]
@@ -62,37 +63,69 @@ Documentation = "https://maxencefaldor.github.io/bbobax/"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# ruff: the formatter at its defaults (4 spaces, 88 columns), so no width and
+# no indent appear here; the opinion is the lint selection, one reason each.
+# The target version is inferred from requires-python: ruff modernizes only as
+# far as 3.11, so it cannot suggest syntax that breaks a 3.11 user. The dev
+# environment runs on 3.14 (see .python-version) -- the tools run new, they
+# validate old.
 [tool.ruff]
 src = ["src", "tests"]
-# The oldest Python we support: ruff modernizes only as far as this, so it
-# cannot suggest syntax that breaks a 3.11 user. The dev environment runs on
-# 3.14 (see .python-version) -- the tools run new, they validate old.
-target-version = "py311"
 # Vendored official BBOB implementation (test ground truth): never lint or
 # reformat it. Top-level exclude covers both `ruff check` and `ruff format`.
 extend-exclude = ["tests/_official/bbobbenchmarks.py"]
 
 [tool.ruff.lint]
-select = ["E", "D", "F", "I", "N", "SIM", "UP", "W"]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # import order
+    "N",       # naming
+    "D",       # docstrings, Google convention below
+    "UP",      # modern syntax for the target version
+    "B",       # likely bugs: mutable defaults, late-binding closures
+    "SIM",     # simpler expressions
+    "C4",      # simpler comprehensions
+    "PTH",     # pathlib over os.path
+    "PERF",    # perflint
+    "FURB",    # refurb: modernize
+    "RUF",     # ruff's own rules
+    "NPY",     # numpy deprecations and the legacy random API
+    "ERA",     # no commented-out code
+]
+# Left out on purpose: PL is noisy on research code, ANN duplicates ty, T20
+# forbids the print a CLI uses. Not TC either: jax reads a jitted function's
+# annotations at trace time, so an import used only in a signature is still a
+# runtime import here.
 ignore = [
-	# D211 is the same choice made the other way -- no blank line before a class
-	# docstring -- and ruff ships both. Only one of the pair can hold.
-	"D203",  # incorrect-blank-line-before-class
-	# D212 is the same choice made the other way: the summary starts on the line
-	# the docstring opens on.
-	"D213",  # multi-line-summary-second-line
-	# The functions are transcribed from the BBOB definitions, which name their
-	# terms in single capitals -- R and Q for the rotations, D for a diagonal --
-	# and the notebooks plot meshgrids as X, Y, Z. Renaming them would break the
-	# correspondence to the reference this package is verified against.
-	"N803",  # invalid-argument-name
-	"N806",  # non-lowercase-variable-in-function
+    # The functions are transcribed from the BBOB definitions, which name their
+    # terms in single capitals -- R and Q for the rotations, D for a diagonal --
+    # and the notebooks plot meshgrids as X, Y, Z. Renaming them would break the
+    # correspondence to the reference this package is verified against.
+    "N803",  # invalid-argument-name
+    "N806",  # non-lowercase-variable-in-function
 ]
 
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
 [tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D103"]  # a test's name is its docstring
+# __all__ is grouped and ordered by hand: the 24 in canonical f1-f24 order,
+# then the suites, then QD. Sorting it would lose the order the comments name.
+"src/bbobax/__init__.py" = ["RUF022"]
+# A notebook is a sequence of cells, not a module: names are rebound as the
+# story moves on, loops are unrolled for their side effects, closures capture
+# the loop variable on purpose.
 "**/*.ipynb" = [
-	"F811",  # redefined-while-unused
+    "B023",  # function-uses-loop-variable
+    "B905",  # zip-without-explicit-strict
+    "F811",  # redefined-while-unused
+    "RUF005",  # collection-literal-concatenation
 ]
+
+[tool.ruff.format]
+docstring-code-format = true
 
 [tool.ty.environment]
 # Type-check against the oldest Python we support, not the one we run on, so a
@@ -102,5 +135,10 @@ python-version = "3.11"
 [tool.ty.src]
 include = ["src", "tests", "scripts"]
 exclude = [
-	"tests/_official",  # vendored ground truth, not ours to type
+    "tests/_official",  # vendored ground truth, not ours to type
 ]
+
+# rumdl: its tables live in .rumdl.toml, because rumdl reads code-block-tools
+# only from its own file (rvben/rumdl#851) and uses the first config file it
+# finds, so a tool.rumdl table here would be dead while that file exists. When
+# the fix lands, move every table from .rumdl.toml under tool.rumdl, delete it.

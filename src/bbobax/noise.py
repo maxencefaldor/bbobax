@@ -387,7 +387,8 @@ class Mixture:
         return MixtureParams(
             model_id=jax.random.choice(key_id, len(self.models)),
             models=tuple(
-                model.sample(k, num_dims) for model, k in zip(self.models, keys)
+                model.sample(k, num_dims)
+                for model, k in zip(self.models, keys, strict=True)
             ),
         )
 
@@ -401,7 +402,7 @@ class Mixture:
             lambda model=model, model_params=model_params: model.apply(
                 key, value, model_params
             )
-            for model, model_params in zip(self.models, params.models)
+            for model, model_params in zip(self.models, params.models, strict=True)
         ]
         return jax.lax.switch(params.model_id, branches)
 
